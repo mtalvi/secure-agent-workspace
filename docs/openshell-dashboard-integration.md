@@ -294,6 +294,24 @@ of role assignment. **Note:** as with bug #12, any session cookie created before
 negotiated with the old (now-rejected-for-some-users) scope; affected users need one fresh login
 after the fix is deployed.
 
+### 14. Missing error guard let one failed step abort the entire setup script
+
+While enabling the dashboard on a second sandbox, the setup Job failed outright with no dashboard
+files ever written. The Job log showed a Node.js stack trace (`EACCES: permission denied, open
+'/sandbox/.openclaw/openclaw.json'`) from the legacy `make gui` auth-token extraction step,
+followed immediately by the Job exiting — `setup-dashboard.sh` never ran. The permission error
+itself was a separate, pre-existing, unrelated issue with that sandbox's own OpenClaw config (see
+"Known pre-existing issue" below); the real bug was that this script couldn't tolerate it.
+`TOKEN=$(openshell sandbox exec -n "${SANDBOX_NAME}" --no-tty -- cat /tmp/auth-token ... | tr -d
+'[:space:]')` had no `|| true` guard. Under `set -euo pipefail`, `cat` on the missing
+`/tmp/auth-token` (never written, since the node snippet just above it had already failed) fails
+the pipeline, and since this is a plain `VAR=$(...)` assignment — not part of an `if`/`&&`/`||` —
+`set -e` aborts the whole script right there, before it ever reaches `setup-dashboard.sh`.
+**Fix:** added `|| true` to that line, matching the guard already present on the node snippet
+immediately above it. This token is best-effort only (used solely by the legacy `make gui`
+helper), so a failure extracting it must never be fatal to the rest of provisioning — dashboard
+setup, and everything else in `run-create.sh`, now correctly continues regardless.
+
 ## Verified end-to-end (live cluster)
 
 - `systemctl --user is-active openshell-dashboard.service` → `active`, survives a full VM reboot.
