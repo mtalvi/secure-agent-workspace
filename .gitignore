@@ -6,3 +6,10 @@ values-secret.yaml
 .vscode/
 .DS_Store
 jira/
+
+# Local reference clone of the dashboard repo (used to read its source while
+# implementing the integration) — not a real submodule, don't track it.
+/openshell-dashboard/
+
+# Personal deployment journal (not part of the shared integration doc)
+/hadar-info.md
