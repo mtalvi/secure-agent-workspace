@@ -668,7 +668,12 @@ data:
         const c = JSON.parse(fs.readFileSync('/sandbox/.openclaw/openclaw.json','utf8'));
         fs.writeFileSync('/tmp/auth-token', (c.gateway && c.gateway.auth && c.gateway.auth.token) || '');
       " || true
-      TOKEN=$(openshell sandbox exec -n "${SANDBOX_NAME}" --no-tty -- cat /tmp/auth-token 2>/dev/null | tr -d '[:space:]')
+      # `pipefail` makes `cat` on a missing /tmp/auth-token (e.g. if the node
+      # snippet above failed) fail the whole pipeline, which would otherwise
+      # abort this entire setup script under `set -e` — this token is only
+      # used by the legacy `make gui` helper, so a failure here must never be
+      # fatal to the rest of provisioning (dashboard setup runs after this).
+      TOKEN=$(openshell sandbox exec -n "${SANDBOX_NAME}" --no-tty -- cat /tmp/auth-token 2>/dev/null | tr -d '[:space:]') || true
     fi
     if [[ -n "${TOKEN}" ]]; then
       echo "${TOKEN}" > "${HOME}/.openclaw-token-${SANDBOX_NAME}"
