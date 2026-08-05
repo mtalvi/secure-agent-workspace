@@ -768,9 +768,16 @@ data:
     # refresh token to renew an expired access token on its own, it just keeps
     # forwarding the stale one until the gateway rejects it (confirmed live:
     # "invalid token: ExpiredSignature" a few minutes after login, endless
-    # spinner in the UI since every API call 401s). offline_access ensures
-    # Keycloak actually issues a refresh token in the first place.
-    OAUTH2_PROXY_SCOPE=openid email profile offline_access
+    # spinner in the UI since every API call 401s). Keycloak already issues a
+    # normal (non-offline) refresh token by default on every login regardless
+    # of scope — that's all --cookie-refresh needs. Do NOT add offline_access
+    # here: Keycloak only grants an *offline* token if the authenticating user
+    # has the realm's offline_access role, which federated/SSO accounts don't
+    # get by default (unlike the built-in test users) — confirmed live this
+    # causes "not_allowed: Offline tokens not allowed for the user or client"
+    # and a 500 at /oauth2/callback for real users. See bug #13 in
+    # docs/openshell-dashboard-integration.md.
+    OAUTH2_PROXY_SCOPE=openid email profile
     OAUTH2_PROXY_COOKIE_REFRESH=60s
     ENVEOF
     chmod 600 "${HOME}/.config/openshell/dashboard.env" "${HOME}/.config/openshell/dashboard-proxy.env"

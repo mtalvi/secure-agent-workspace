@@ -261,14 +261,38 @@ back the endless spinner. Server-side logs showed `invalid token: ExpiredSignatu
 `--cookie-refresh` (`OAUTH2_PROXY_COOKIE_REFRESH`) **defaults to `0` (disabled)** — oauth2-proxy
 does not proactively refresh an expiring access token on its own, it just keeps forwarding the
 same stale one from its session cookie until whatever is downstream (the gateway) finally rejects
-it. Separately, the initial scope (`openid email profile`) doesn't request `offline_access`, which
-is the most reliable way to guarantee Keycloak actually issues a refresh token in the first place.
-**Fix:** added `OAUTH2_PROXY_SCOPE=openid email profile offline_access` and
-`OAUTH2_PROXY_COOKIE_REFRESH=60s` (safe/frequent — refreshing more often than strictly necessary is
-harmless; guessing the exact access-token lifespan and cutting it close is not, per oauth2-proxy's
-own docs). **Note:** since the scope itself changed, any session cookie created *before* this fix
-was never issued a refresh token with `offline_access` — a fresh login (via `/oauth2/sign_out`) is
-required once after deploying this fix for it to take effect.
+it.
+**Fix:** added `OAUTH2_PROXY_COOKIE_REFRESH=60s` (safe/frequent — refreshing more often than
+strictly necessary is harmless; guessing the exact access-token lifespan and cutting it close is
+not, per oauth2-proxy's own docs).
+**Correction (see bug #13 below):** the original fix here also added `offline_access` to
+`OAUTH2_PROXY_SCOPE`, on the assumption that it was needed to guarantee Keycloak issues a refresh
+token at all. That assumption was wrong — Keycloak issues a normal (non-offline) refresh token by
+default on every authorization-code login regardless of scope, which is all `--cookie-refresh`
+actually needs. `offline_access` was not only unnecessary, it introduced a new failure mode
+(bug #13) and has since been removed.
+
+### 13. `offline_access` scope breaks login for any user without the realm's `offline_access` role
+
+After bug #12 shipped, a teammate hit a fresh `500` at `/oauth2/callback` on a completely different
+account. oauth2-proxy's logs showed a different Keycloak rejection this time:
+`"error":"not_allowed","error_description":"Offline tokens not allowed for the user or client"`.
+Keycloak only issues an *offline* token (requested via the `offline_access` scope) if the
+authenticating **user** has the realm-level `offline_access` role — the client having the
+`offline_access` optional client scope assigned (true here, and true by default for any client) is
+necessary but not sufficient. The realm's built-in test users (`alice`/`bob`/`admin`/`developer`)
+happen to have it; real, federated/SSO-broker accounts do not get it auto-assigned, the same class
+of gap already hit twice before for this exact kind of account (bug #10's `email_verified`, and the
+`openshell-user`/`openshell-admin` realm roles needing a manual `kcadm.sh` grant during base
+deployment). This is **not** a "public clients can't get offline tokens" restriction — Keycloak
+and PKCE-based public clients are explicitly compatible — it's specifically a missing per-user role.
+**Fix:** removed `offline_access` from `OAUTH2_PROXY_SCOPE` entirely (`OAUTH2_PROXY_SCOPE=openid
+email profile`) rather than granting the role per-user. Per bug #12's correction above, this loses
+nothing — `--cookie-refresh` only ever needed the normal refresh token Keycloak already issues by
+default — and it removes this entire failure class for every current and future user, regardless
+of role assignment. **Note:** as with bug #12, any session cookie created before this fix was
+negotiated with the old (now-rejected-for-some-users) scope; affected users need one fresh login
+after the fix is deployed.
 
 ## Verified end-to-end (live cluster)
 
