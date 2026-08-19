@@ -20,7 +20,7 @@ Each hop is a separate mechanism, owned by a different layer:
 |---|---|---|
 | Node → VM | KubeVirt `hostDevices` (VFIO PCI passthrough) | `charts/openshift-cnv` (HyperConverged `permittedHostDevices`) + `charts/openshell-saw` (VM spec) |
 | VM → container | NVIDIA Container Toolkit + CDI (Podman) or `nvidia-ctk runtime configure` (Docker) | `image-builder-charts/helm/openshell-gateway-image` (golden image) |
-| container → sandbox | `openshell sandbox create --gpu` | `charts/openshell-saw` (setup scripts) — native OpenShell CLI flag, confirmed live (see below) |
+| container → sandbox | `openshell sandbox create --gpu` | `charts/saw-bom` (BOM profile `gpu:` field + `apply_bom.py`) — native OpenShell CLI flag, confirmed live (see below) |
 
 ## Hardware requirements — read this before enabling `vm.gpu.enabled`
 
@@ -233,24 +233,97 @@ $ openshell sandbox create --help
 its private package index at the time of writing — the flag is part of the same `rhaiv` build
 lineage.)
 
-This means Phase 3 doesn't need a workaround — `charts/openshell-saw/templates/configmap-scripts.yaml`
-now passes `--gpu "${GPU_COUNT}"` directly to `openshell sandbox create` whenever `vm.gpu.enabled`
-is set (wired through a new `GPU_ENABLED`/`GPU_COUNT` pair in `secret-setup-env.yaml`). This is
-still just a *request* — it only has any effect if the underlying `containerRuntime` is actually
-GPU-capable per Phase 2 above; otherwise it's a no-op/best-effort request from OpenShell's own
-driver layer, not a hard failure of this pattern's own scripts.
+This means Phase 3 doesn't need a workaround. Since PR #34's "BOM-driven agent configuration"
+refactor, sandbox creation is no longer bash/env-var driven at all — it's **declarative per
+sandbox** in a BOM profile's `sandbox.yaml`, parsed and applied by
+[`charts/saw-bom/scripts/apply_bom.py`](../charts/saw-bom/scripts/apply_bom.py) (a Python script
+that runs on the VM via SSH). A sandbox entry opts into GPU with a `gpu:` block:
 
-A GPU health check was also added to the setup Job (`run-setup.sh`): after cloud-init finishes, if
-`vm.gpu.enabled`, it polls `nvidia-smi` inside the VM for up to 5 minutes and prints the GPU
-name/driver/memory on success. It **warns rather than fails** the whole Job on timeout, since a
-GPU-enabled VM on hardware that doesn't actually support passthrough (see the hardware section
-above) is a real, documented, expected scenario on some clusters — not necessarily a bug.
+```yaml
+- name: cuda-sandbox
+  type: nemoclaw
+  ...
+  gpu:
+    enabled: true
+    count: 1
+```
 
-`NEMOCLAW_GPU_ENABLED`/`NEMOCLAW_GPU_COUNT` env vars are also passed into `nemoclaw onboard` on a
-best-effort basis, in case NemoClaw has its own GPU-aware tool selection. **This could not be
-verified** — NemoClaw, like OpenShell's own gateway/CLI, is an upstream, closed-source binary this
-repo doesn't control; there's no way to introspect what (if anything) it does with those env vars
-without access to its source.
+`apply_bom.py`'s `Sandbox` dataclass carries `gpu_enabled`/`gpu_count`, and its single
+`create_sandbox_generic()` function (used for every sandbox type — nemoclaw, openclaw, and plain
+generic sandboxes alike) appends `--gpu <count>` to the `openshell sandbox create` invocation
+whenever `gpu_enabled` is set. This is still just a *request* — it only has any effect if the
+underlying `containerRuntime` is actually GPU-capable per Phase 2 above; otherwise it's a
+no-op/best-effort request from OpenShell's own driver layer, not a hard failure of this pattern's
+own scripts. The bundled `charts/saw-bom/profiles/data-science/cuda-dev` profile's `cuda-sandbox`
+entry sets `gpu.enabled: true` as a live example.
+
+A GPU health check was also added to the setup Job, in the `wait-for-vm.sh` phase script (one of
+the phase scripts `run-setup.sh` sources in order — see PR #34's phase-based restructuring):
+after cloud-init finishes, if `vm.gpu.enabled`, it polls `nvidia-smi` inside the VM for up to 5
+minutes and prints the GPU name/driver/memory on success. It **warns rather than fails** the whole
+Job on timeout, since a GPU-enabled VM on hardware that doesn't actually support passthrough (see
+the hardware section above) is a real, documented, expected scenario on some clusters — not
+necessarily a bug.
+
+`NEMOCLAW_GPU_ENABLED`/`NEMOCLAW_GPU_COUNT` env vars are also passed into `nemoclaw onboard` (in
+`apply_bom.py`'s `onboard_nemoclaw()`) on a best-effort basis, in case NemoClaw has its own
+GPU-aware tool selection. **This could not be verified** — NemoClaw, like OpenShell's own
+gateway/CLI, is an upstream, closed-source binary this repo doesn't control; there's no way to
+introspect what (if anything) it does with those env vars without access to its source.
+
+## Live validation after the PR #34 (BOM-driven agent configuration) rebase
+
+This branch was later rebased onto `main` after PR #34's large structural refactor (sandbox
+creation moved from bash to `charts/saw-bom/scripts/apply_bom.py`, driven by declarative BOM
+profiles instead of Helm-value-driven env vars — see [`docs/bom-architecture.md`](bom-architecture.md)).
+The GPU wiring above reflects the *post-rebase* state; the porting itself is summarized in the
+local session log.
+
+The rebased wiring was validated live end-to-end on `sandbox1884`, deploying the actual
+`data-science` BOM profile (both its `cuda-dev` and `default` workspaces) via a real setup Job:
+
+```
+$ openshell sandbox create --name cuda-sandbox --from quay.io/rh-ai-quickstart/nemoclaw-sandbox:latest \
+    --workspace cuda-dev --provider nvidia --gpu 1 --no-tty -- sh -c echo sandbox-ready
+  WARN: Error:   × code: 'The system is not in a state required for the operation's
+  │ execution', message: "no NVIDIA CDI GPU devices were discovered"
+```
+
+This is the real, live output of the first attempt (with `vm.gpu.enabled: true` still set from the
+pre-rebase testing) — and it is a **complete, positive confirmation** of the ported wiring, not a
+failure: the `--gpu 1` flag is present in the actual invoked command exactly as `apply_bom.py`'s
+`create_sandbox_generic()` constructs it from the BOM profile's `gpu.enabled`/`gpu.count` fields,
+and the rejection message is the literal string from OpenShell's own
+`CdiGpuSelectionError::NoAvailableDevices` (see `openshell-core/src/gpu.rs`, read directly from the
+upstream source earlier in this investigation) — the CLI is doing exactly the right thing given
+that this VM has no real GPU device. It fails for the same, already-documented hardware reason as
+everywhere else in this doc, not because of anything wrong with the rebase.
+
+Having already captured that evidence, GPU was turned off for the rest of the live run (both at
+the VM level, `vm.gpu.enabled: false`, and temporarily on the BOM profile) purely to let the setup
+Job actually finish inside its `activeDeadlineSeconds` window instead of retry-looping against a
+sandbox that could never become Ready — re-hitting the same known hardware wall a second time
+would not have produced new information. With GPU off, the full BOM-driven flow completed cleanly:
+
+```
+PASS  workspace 'cuda-dev'
+PASS  provider 'nvidia' in 'cuda-dev'
+PASS  sandbox 'cuda-sandbox' in 'cuda-dev'
+PASS  sandbox 'cuda-sandbox' provider list
+PASS  provider 'nvidia' in 'default'
+PASS  provider 'brave' in 'default'
+PASS  sandbox 'notebook' in 'default'
+PASS  sandbox 'notebook' provider list
+
+Results: 10 passed, 0 failed
+STATUS: ALL PASSED
+```
+
+Both sandboxes' OpenClaw gateways were confirmed independently healthy via
+`openshell sandbox exec ... -- curl -sf http://127.0.0.1:18789/health` → `{"ok":true,"status":"live"}`,
+and the full setup Job log was grepped for the dummy credential value used in this test —
+zero unmasked occurrences, confirming the existing secret-redaction logic in `apply_bom.py`'s
+`Shell.run()` continues to work correctly post-rebase.
 
 ## Governance interceptor: not an extension point for this
 
