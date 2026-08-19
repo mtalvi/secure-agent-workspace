@@ -255,7 +255,12 @@ whenever `gpu_enabled` is set. This is still just a *request* — it only has an
 underlying `containerRuntime` is actually GPU-capable per Phase 2 above; otherwise it's a
 no-op/best-effort request from OpenShell's own driver layer, not a hard failure of this pattern's
 own scripts. The bundled `charts/saw-bom/profiles/data-science/cuda-dev` profile's `cuda-sandbox`
-entry sets `gpu.enabled: true` as a live example.
+entry has a `gpu:` block showing the field shape, but it ships with `enabled: false` — that
+sandbox is enabled by default in the bundled `data-science` profile (the default profile in
+`charts/saw-bom/values.yaml`), so shipping `gpu.enabled: true` there would make `--gpu` fire on
+every default deployment of this pattern and fail the whole BOM verification (and thus the whole
+setup Job) on any cluster without real GPU passthrough — which is nearly everyone. Flip it to
+`true` only on a cluster that actually has `vm.gpu.enabled` plus a real passthrough-capable GPU.
 
 A GPU health check was also added to the setup Job, in the `wait-for-vm.sh` phase script (one of
 the phase scripts `run-setup.sh` sources in order — see PR #34's phase-based restructuring):
@@ -300,10 +305,15 @@ that this VM has no real GPU device. It fails for the same, already-documented h
 everywhere else in this doc, not because of anything wrong with the rebase.
 
 Having already captured that evidence, GPU was turned off for the rest of the live run (both at
-the VM level, `vm.gpu.enabled: false`, and temporarily on the BOM profile) purely to let the setup
-Job actually finish inside its `activeDeadlineSeconds` window instead of retry-looping against a
-sandbox that could never become Ready — re-hitting the same known hardware wall a second time
-would not have produced new information. With GPU off, the full BOM-driven flow completed cleanly:
+the VM level, `vm.gpu.enabled: false`, and on the BOM profile's `cuda-sandbox` entry) purely to
+let the setup Job actually finish inside its `activeDeadlineSeconds` window instead of
+retry-looping against a sandbox that could never become Ready — re-hitting the same known
+hardware wall a second time would not have produced new information. The BOM profile's
+`gpu.enabled` then stayed off permanently rather than being flipped back to `true` afterward: that
+sandbox is enabled by default in the bundled `data-science` profile (this pattern's own default
+profile), so shipping it with GPU on would break the whole BOM verification — and thus the whole
+setup Job — for every default deployment on a cluster without real GPU passthrough, which is
+nearly everyone. With GPU off, the full BOM-driven flow completed cleanly:
 
 ```
 PASS  workspace 'cuda-dev'
