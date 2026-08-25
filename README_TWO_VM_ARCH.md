@@ -153,6 +153,8 @@ GOVERNANCE_ENABLED=false make deploy-integ-vm
 
 > **Why the redeploy?** OpenShell v-type credential placeholders (created at sandbox startup before refresh is configured) are not resolvable by the supervisor. Recreating the sandbox after refresh gives it a fresh s-type placeholder. See `docs/bugs/openshell-v-type-placeholder-not-resolved.md`.
 
+> **Important: Refresh config is lost on redeploy.** The `openshell provider refresh configure` state is stored in the gateway and destroyed during `helm uninstall`. After every integ VM redeploy, you must re-run `make configure-gmail-refresh` (or `make configure-gmail-write-refresh` for the write proxy) to reconfigure the OAuth refresh material.
+
 ### Step 6: Verify and test
 
 ```bash

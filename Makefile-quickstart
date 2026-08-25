@@ -704,6 +704,15 @@ configure-gmail-refresh: ## Configure Gmail OAuth refresh on integrations VM (in
 		$(if $(CLIENT_JSON),--client-json "$(CLIENT_JSON)",) \
 		$(if $(TOKEN_EXPORT),--token-export "$(TOKEN_EXPORT)",)
 
+configure-gmail-write-refresh: ## Configure Gmail WRITE OAuth refresh (gmail.compose scope) on integrations VM
+	$(SCRIPTS_DIR)/configure-gmail-write-refresh.sh \
+		--namespace "$(NS)" \
+		--vm "$(INTEG_VM_NAME)" \
+		--ssh-key "$(SSH_KEY_PATH)" \
+		$(if $(GMAIL_ACCOUNT),--gmail-account "$(GMAIL_ACCOUNT)",) \
+		$(if $(CLIENT_JSON),--client-json "$(CLIENT_JSON)",) \
+		$(if $(TOKEN_EXPORT),--token-export "$(TOKEN_EXPORT)",)
+
 verify-keycloak: ## Verify Keycloak deployment (instance, realm, clients, users, OIDC)
 	@$(SCRIPTS_DIR)/verify-keycloak.sh --ns $(KEYCLOAK_NS)
 

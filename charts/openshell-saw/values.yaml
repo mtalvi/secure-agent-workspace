@@ -147,15 +147,15 @@ service:
   #   port: 18080
   #   targetPort: 18080
 
-# Two-VM split: name of the peer VM's app label and allowed proxy ports.
-# Only used when role is "agent" or "integrations".
-# Two-VM split: peer VM label and proxy ports for provider profile routing.
-# NetworkPolicy is applied post-setup via deploy/two-vm/networkpolicy.yaml.
+# Two-VM split: peer VM label and allowed proxy ports.
+# When role=agent and peerLabel is set, an egress NetworkPolicy is created that
+# restricts this VM's outbound traffic to the peer (integrations) VM to only
+# the listed ports. Traffic to all other destinations is unrestricted.
 networkPolicy:
   peerLabel: ""
   allowedPorts: []
   # - 18080
-  # - 18081
+  # - 18083
 
 # OpenShell Dashboard — standalone Go BFF + React admin UI for OpenShell
 # (gateways, workspaces, sandboxes, providers). Runs via docker inside the

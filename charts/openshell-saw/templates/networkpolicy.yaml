@@ -1,0 +1,49 @@
+{{- if and (eq .Values.role "agent") .Values.networkPolicy.peerLabel }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "openshell-sandbox.fullname" . }}-egress
+  labels:
+    {{- include "openshell-sandbox.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "openshell-sandbox.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allowed ports on the peer (integrations) VM
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Values.networkPolicy.peerLabel }}
+      ports:
+        {{- range .Values.networkPolicy.allowedPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    # All traffic to other namespaces (API server, kubevirt, routes, etc.)
+    - to:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: NotIn
+                values:
+                  - {{ .Release.Namespace }}
+    # Same-namespace traffic to non-peer pods (own services, keycloak, etc.)
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/instance
+                operator: NotIn
+                values:
+                  - {{ .Values.networkPolicy.peerLabel }}
+{{- end }}

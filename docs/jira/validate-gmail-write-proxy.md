@@ -28,20 +28,36 @@ Validate the Gmail write proxy (draft create/send/cancel) on the integrations VM
 
 ## Test Commands
 
+> **Note:** The write proxy uses the `x-forge-mail-bearer` header (NOT `Authorization: Bearer`).
+
 ```bash
-# Verify front-door enforcement from integ VM loopback
-virtctl -n openshell-agents ssh cloud-user@vm/openshell-saw-integ ... \
+# Verify healthz from integ VM loopback
+virtctl -n openshell-agents ssh cloud-user@vm/openshell-saw-integ \
+  -i ~/.generated-ssh-keys/sandbox-ssh -t "-o StrictHostKeyChecking=no" \
   --command='curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:18081/healthz'
 # Expected: 200
 
-virtctl ... --command='curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:18081/pending'
-# Expected: 401 (no bearer)
+# Verify front-door bearer enforcement (no bearer -> 401)
+virtctl -n openshell-agents ssh cloud-user@vm/openshell-saw-integ \
+  -i ~/.generated-ssh-keys/sandbox-ssh -t "-o StrictHostKeyChecking=no" \
+  --command='curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:18081/pending'
+# Expected: 401
 
-# Verify agent VM cannot reach write proxy
-virtctl -n openshell-agents ssh cloud-user@vm/openshell-saw ... \
-  --command='curl --noproxy "*" --connect-timeout 2 -s -o /dev/null -w "%{http_code}" \
+# Verify front-door bearer passes (get bearer from K8s Secret)
+FD_BEARER=$(oc get secret gmail-write-frontdoor -n openshell-agents \
+  -o jsonpath='{.data.bearer}' | base64 -d)
+virtctl -n openshell-agents ssh cloud-user@vm/openshell-saw-integ \
+  -i ~/.generated-ssh-keys/sandbox-ssh -t "-o StrictHostKeyChecking=no" \
+  --command="curl -sS -o /dev/null -w '%{http_code}' \
+    -H 'x-forge-mail-bearer: ${FD_BEARER}' http://127.0.0.1:18081/pending"
+# Expected: 200
+
+# Verify agent VM cannot reach write proxy (egress NetworkPolicy)
+virtctl -n openshell-agents ssh cloud-user@vm/openshell-saw \
+  -i ~/.generated-ssh-keys/sandbox-ssh -t "-o StrictHostKeyChecking=no" \
+  --command='curl --noproxy "*" --connect-timeout 5 -s -o /dev/null -w "%{http_code}" \
     http://openshell-saw-integ-gateway.openshell-agents.svc.cluster.local:18081/pending'
-# Expected: 000 (connection refused / NetworkPolicy blocked)
+# Expected: 000 (connection blocked by NetworkPolicy)
 ```
 
 ## Dependencies
