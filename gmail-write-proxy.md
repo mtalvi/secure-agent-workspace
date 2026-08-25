@@ -409,16 +409,21 @@ GET /healthz → 200 (allowed)
 
 ## Issues Encountered and Root-Cause Analysis
 
-### Discovery: Bearer header is `x-forge-mail-bearer`, not `Authorization: Bearer`
+### Observation: Bearer header is `x-forge-mail-bearer` (by design)
 
 The Jira ticket test commands specified `Authorization: Bearer <frontdoor-bearer>`, but the proxy
-binary uses the custom header `x-forge-mail-bearer`. Discovered by:
-1. Confirming FRONT_DOOR_BEARER_SHA256 matches in sandbox env and K8s Secret
-2. All `Authorization: Bearer` variants returned 401 with log: "invalid front-door bearer"
-3. Binary string analysis: `grep -ao "x-forge" /sandbox/gmail-write-proxy` → `x-forge-mail-bearer`
-4. Testing with `x-forge-mail-bearer` header → 200
+uses the custom header `x-forge-mail-bearer`. This is **intentional, not a bug**. The
+`Authorization` header is already reserved for the outbound Gmail OAuth token — the governance
+profile (`gmail-write.yaml` line 12-13) configures `auth_style: bearer` /
+`header_name: authorization` for the real credential that the supervisor injects at egress to
+`gmail.googleapis.com`. The inbound front-door bearer uses a separate custom header to avoid
+collision.
 
-This is consistent with the gmail-read proxy which uses `x-forge-read-bearer`.
+This is consistent with all proxies in the architecture: the gmail-read proxy uses
+`x-forge-read-bearer`, the Slack read proxy uses `x-forge-slack-read-bearer`, etc.
+
+The Jira ticket test commands were incorrect — the proxy is working as designed. Corrected in
+Fix 2 below.
 
 ### Discovery: No NetworkPolicy chart template
 
@@ -456,7 +461,7 @@ Same as gmail-read validation — versioned tag fails, `:latest` fallback works.
 
 | Issue | Root Cause | Category | Fix |
 |-------|-----------|----------|-----|
-| Bearer header wrong in Jira ticket | Proxy uses `x-forge-mail-bearer`, not `Authorization: Bearer` | **Documentation** | Corrected in test commands |
+| Bearer header wrong in Jira ticket | Proxy uses `x-forge-mail-bearer` by design (`Authorization` reserved for outbound OAuth token) | **Observation** (Jira ticket error) | Corrected in test commands |
 | No NetworkPolicy | Chart has no template for `networkPolicy` values | **Code** | Manual egress policy applied |
 | Refresh lost after redeploy | Gateway state destroyed during helm uninstall | **Architecture** | Reconfigure refresh after redeploy |
 | Draft operations fail | Proxy requires Forge UI assertion for sender derivation | **By design** | Deferred to Forge UI relay testing |
