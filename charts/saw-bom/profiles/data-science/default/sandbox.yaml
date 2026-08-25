@@ -11,6 +11,7 @@ spec:
       runAsGroup: "__OPENCLAW_NOTEBOOK_RUN_AS_GROUP__"
       providers:
         - gmail-read-proxy
+        - slack-read-proxy
       env:
         GOG_GMAIL_BASE_URL: "http://127.0.0.1:18079/"
         GMAIL_READ_UPSTREAM: "http://openshell-saw-integ-gateway.__NAMESPACE__.svc.cluster.local:18080/"

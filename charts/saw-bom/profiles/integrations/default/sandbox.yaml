@@ -54,6 +54,7 @@ spec:
       command: "/sandbox/slack-read-proxy"
       env:
         LISTEN_ADDR: "127.0.0.1:18084"
+        SLACK_READ_PROXY_BEARER: "${INTER_VM_BEARER}"
       exposePort: 18084
       providers:
         - slack-read

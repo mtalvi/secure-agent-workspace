@@ -13,3 +13,8 @@ spec:
       credentialKey: GOG_ACCESS_TOKEN
       credentialSecret: inter-vm-bearer
       credentialSecretKey: bearer
+    - name: slack-read-proxy
+      type: slack-read-proxy
+      credentialKey: SLACK_READ_PROXY_BEARER
+      credentialSecret: inter-vm-bearer
+      credentialSecretKey: bearer

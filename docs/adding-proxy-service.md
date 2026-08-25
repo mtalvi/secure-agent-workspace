@@ -43,11 +43,18 @@ Create a container image that:
 
 Example env vars your proxy should read:
 ```
-INTER_VM_BEARER_SHA256=<64-hex-chars>   # for read proxies
+INTER_VM_BEARER_SHA256=<64-hex-chars>   # for read proxies (SHA256 comparison)
+INTER_VM_BEARER=<raw-bearer>           # alternative: raw bearer for direct comparison
 FRONT_DOOR_BEARER_SHA256=<64-hex-chars> # for write proxies (relay)
 YOUR_API_TOKEN=<real-credential>        # injected by provider credentialKey
 LISTEN_ADDR=127.0.0.1:18087
 ```
+
+> **Note:** Some proxies compare against the SHA256 hash of the inter-VM bearer (e.g.,
+> `gmail-read-proxy` uses `INTER_VM_BEARER_SHA256`), while others compare against the raw
+> bearer directly (e.g., `slack-read-proxy` uses `SLACK_READ_PROXY_BEARER` populated from
+> `${INTER_VM_BEARER}`). Match whichever pattern your proxy binary expects. Both variables
+> are available in `bom.env` at deploy time.
 
 Push the image to a registry:
 ```bash
@@ -141,7 +148,7 @@ spec:
         - your-service
 ```
 
-The `env` block passes environment variables to the sandbox process. `${INTER_VM_BEARER_SHA256}` is resolved from `bom.env` at deploy time.
+The `env` block passes environment variables to the sandbox process. `${INTER_VM_BEARER_SHA256}` and `${INTER_VM_BEARER}` are both resolved from `bom.env` at deploy time. Use whichever your proxy binary expects.
 
 ### 5. Add to the integrations BOM providers
 
