@@ -86,10 +86,11 @@ is a real `openshell sandbox create` option; it was confirmed locally on
 pins OpenShell `0.0.116-rhaiv.0`. Re-check `openshell sandbox create --help`
 on that build during the LaunchPad run.
 
-For a `type: nemoclaw` sandbox the installer also sets
-`NEMOCLAW_GPU_ENABLED` and `NEMOCLAW_GPU_COUNT` on `nemoclaw onboard`.
-NemoClaw is closed-source; this repo does not know whether those variables
-change its behavior.
+`nemoclaw onboard` is not given a GPU flag or `NEMOCLAW_GPU_*` environment
+variables. Current NemoClaw does not read those variables. Its onboard GPU
+surface is `--sandbox-gpu` / `--gpu` (enable or disable) and an optional
+device pin, with no count. Sandbox GPU attachment in this pattern is only
+`openshell sandbox create --gpu`.
 
 ## Not in this change
 

@@ -1478,11 +1478,8 @@ class ProfileApplier:
             env["NEMOCLAW_MODEL"] = sb.model or provider.model
         if PROVIDER_CRED_MAP.get(nc_provider):
             env[PROVIDER_CRED_MAP[nc_provider]] = credential
-        if sb.gpu_enabled:
-            # Best-effort. NemoClaw is closed-source; this repo cannot verify
-            # what it does with these variables. See docs/gpu-passthrough.md.
-            env["NEMOCLAW_GPU_ENABLED"] = "true"
-            env["NEMOCLAW_GPU_COUNT"] = str(sb.gpu_count)
+        # GPU attachment is openshell sandbox create --gpu in create_sandbox().
+        # nemoclaw onboard does not read NEMOCLAW_GPU_* and has no count flag.
         result = self.sh.run(["nemoclaw", "onboard", "--fresh", "--non-interactive",
                               "--name", sb.name, "--agent", sb.agent or "openclaw",
                               "--yes", "--yes-i-accept-third-party-software"],
