@@ -13,6 +13,8 @@ AGENT          ?= openclaw
 CONTAINER_RUNTIME ?= podman
 IMAGE_NAME      = $(if $(filter docker,$(CONTAINER_RUNTIME)),openshell-gateway-docker,openshell-gateway)
 GOVERNANCE_ENABLED ?= true
+GPU_ENABLED    ?= false
+GPU_COUNT      ?= 1
 PROVIDER       ?=
 MODEL          ?=
 API_KEY        ?=
@@ -117,6 +119,21 @@ WORKSPACE      ?= default
 	fi
 	@if [ -f "$(SSH_KEY_PATH).pub" ]; then echo "  SSH key: $(SSH_KEY_PATH)"; \
 	else echo "  SSH key: not found. Run 'make generate-keys'."; fi
+	@if [ "$(GPU_ENABLED)" = "true" ]; then \
+		echo "Checking GPU prerequisites (GPU_ENABLED=true)..."; \
+		if ! oc get csv -A 2>/dev/null | grep -qi 'gpu-operator-certified'; then \
+			echo "Warning: NVIDIA GPU Operator not found. vm.gpu.enabled needs vfio-pci"; \
+			echo "  bound on a GPU node. See docs/gpu-passthrough.md."; \
+		else \
+			echo "  NVIDIA GPU Operator: installed"; \
+		fi; \
+		if ! oc get hyperconverged kubevirt-hyperconverged -n openshift-cnv -o jsonpath='{.spec.permittedHostDevices}' 2>/dev/null | grep -q pciHostDevices; then \
+			echo "Warning: HyperConverged has no permittedHostDevices. Deploy charts/openshift-cnv"; \
+			echo "  with gpu.enabled=true before a GPU VM can schedule. See docs/gpu-passthrough.md."; \
+		else \
+			echo "  HyperConverged permittedHostDevices: configured"; \
+		fi; \
+	fi
 	@echo "Checking image registry route..."
 	@if ! oc get route default-route -n openshift-image-registry >/dev/null 2>&1; then \
 		echo "  Image registry route: enabling..."; \
@@ -366,7 +383,7 @@ ssh-secret: ## (Legacy) SSH key secrets in $(NS); provisioning no longer uses th
 
 # --- Sandbox ---
 
-openshell-saw-create: .check-saw-name ## Provision a sandbox (PROVIDER=, MODEL=, API_KEY=, CONTAINER_RUNTIME=podman|docker)
+openshell-saw-create: .check-saw-name ## Provision a sandbox (PROVIDER=, MODEL=, API_KEY=, GPU_ENABLED=true|false)
 	@NS=$(NS) SAW_NS=$(SAW_NS) KEYCLOAK_NS=$(KEYCLOAK_NS) KEYCLOAK_REALM=$(KEYCLOAK_REALM) \
 	OPENSHELL_SAW_NAME=$(OPENSHELL_SAW_NAME) SAW_CHART=$(SAW_CHART) \
 	SANDBOX_IMAGE=$(SANDBOX_IMAGE) AGENT=$(AGENT) \
@@ -377,6 +394,7 @@ openshell-saw-create: .check-saw-name ## Provision a sandbox (PROVIDER=, MODEL=,
 	SCRIPTS_DIR=$(SCRIPTS_DIR) \
 	CONTAINER_RUNTIME=$(CONTAINER_RUNTIME) \
 	GOVERNANCE_ENABLED=$(GOVERNANCE_ENABLED) \
+	GPU_ENABLED=$(GPU_ENABLED) GPU_COUNT=$(GPU_COUNT) \
 	$(SCRIPTS_DIR)/openshell-saw-create.sh
 
 openshell-saw-configure-gateway: .check-saw-name ## Configure openshell CLI for a sandbox gateway

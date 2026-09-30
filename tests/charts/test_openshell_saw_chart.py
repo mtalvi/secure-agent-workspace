@@ -736,6 +736,23 @@ def test_signing_mode_defaults_to_warn(default_docs):
     assert unit.index("saw-stage-installer") < unit.index("apply_bom.py install")
 
 
+def test_vm_has_no_gpu_unless_enabled(default_docs):
+    domain = default_docs[("VirtualMachine", "saw-test")]["spec"]["template"]["spec"]["domain"]
+    assert "hostDevices" not in domain["devices"]
+    assert "limits" not in domain["resources"]
+
+
+def test_vm_requests_host_devices_when_gpu_enabled():
+    docs = render("--set", "vm.gpu.enabled=true", "--set", "vm.gpu.count=2",
+                  "--set", "vm.gpu.deviceName=nvidia.com/TEST")
+    domain = docs[("VirtualMachine", "saw-test")]["spec"]["template"]["spec"]["domain"]
+    assert domain["resources"]["limits"]["memory"] == domain["resources"]["requests"]["memory"]
+    assert domain["devices"]["hostDevices"] == [
+        {"deviceName": "nvidia.com/TEST", "name": "gpu0"},
+        {"deviceName": "nvidia.com/TEST", "name": "gpu1"},
+    ]
+
+
 def test_enforce_without_trust_material_fails_at_render():
     err = render_error("--set", "signing.mode=enforce")
     assert "signing.mode enforce requires" in err

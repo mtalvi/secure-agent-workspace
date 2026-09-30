@@ -1,0 +1,13 @@
+# GPU passthrough (KubeVirt hostDevices). Off by default. Enabling this only
+# makes sense on bare-metal (or IOMMU-capable) clusters where a GPU is already
+# bound to vfio-pci on at least one node. See docs/gpu-passthrough.md.
+#
+# pciDeviceSelector is VENDOR:DEVICE from `lspci -nnk` on the target node.
+# The entry below is an NVIDIA A10G (10de:2237), confirmed on an earlier AWS
+# test cluster. Replace it with the LaunchPad GPU's PCI id before enabling.
+# resourceName must match vm.gpu.deviceName in charts/openshell-saw/values.yaml.
+gpu:
+  enabled: false
+  pciHostDevices:
+    - pciDeviceSelector: "10DE:2237"
+      resourceName: "nvidia.com/GA102GL_A10G"
