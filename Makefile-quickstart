@@ -28,6 +28,14 @@ GOVERNANCE_ENABLED ?= true
 GOVERNANCE_ENGINE ?= interceptor
 # Python for the APF bundle tooling (scripts/apf-bundle.py needs cryptography).
 APF_PYTHON ?= python3
+# Preserve whether callers explicitly set GPU options; chart defaults and
+# SAW_VALUES_FILE must not be overwritten by Make's convenience defaults.
+GPU_ENABLED_OVERRIDE := $(if $(filter undefined,$(origin GPU_ENABLED)),false,true)
+GPU_COUNT_OVERRIDE := $(if $(filter undefined,$(origin GPU_COUNT)),false,true)
+GPU_DEVICE_NAME_OVERRIDE := $(if $(filter undefined,$(origin GPU_DEVICE_NAME)),false,true)
+GPU_ENABLED ?= false
+GPU_COUNT ?= 1
+GPU_DEVICE_NAME ?=
 PROVIDER       ?=
 MODEL          ?=
 API_KEY        ?=
@@ -63,6 +71,7 @@ WORKSPACE      ?= default
 # in credentials do not become parts of a shell command.
 export NS BUILD_NS IMAGE_REPO MIRROR_IMAGES IMAGE_TAG OPENSHELL_INTERCEPTOR_REF
 export OPENSHELL_SAW_NAME SANDBOX_IMAGE CONTAINER_RUNTIME GOVERNANCE_ENABLED GOVERNANCE_ENGINE
+export GPU_ENABLED GPU_COUNT GPU_DEVICE_NAME GPU_ENABLED_OVERRIDE GPU_COUNT_OVERRIDE GPU_DEVICE_NAME_OVERRIDE
 export PROVIDER MODEL API_KEY ENDPOINT_URL PROFILES WEB_SEARCH WEB_SEARCH_API_KEY GCP_SA_JSON
 export OIDC_ISSUER OIDC_CLIENT_ID OIDC_FLOW OIDC_TOKEN_DIR SSH_KEY_PATH OWNER OWNER_SUBJECT
 export SAW_NS SAW_CHART SAW_VALUES_FILE KEYCLOAK_NS KEYCLOAK_CHART KEYCLOAK_REALM KEYCLOAK_NAME SANDBOX_NAME
