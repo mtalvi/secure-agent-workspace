@@ -3,4 +3,11 @@ kind: HyperConverged
 metadata:
   name: kubevirt-hyperconverged
   namespace: openshift-cnv
-spec: {}
+spec:{{ if not .Values.gpu.enabled }} {}{{ else }}
+  permittedHostDevices:
+    pciHostDevices:
+      {{- range .Values.gpu.pciHostDevices }}
+      - pciDeviceSelector: {{ .pciDeviceSelector | quote }}
+        resourceName: {{ .resourceName | quote }}
+      {{- end }}
+{{- end }}
