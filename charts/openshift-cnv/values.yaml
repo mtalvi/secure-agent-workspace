@@ -7,7 +7,10 @@
 # test cluster. Replace it with the LaunchPad GPU's PCI id before enabling.
 # resourceName must match vm.gpu.deviceName in charts/openshell-saw/values.yaml.
 gpu:
-  enabled: false
+  # LaunchPad test only. The node advertises this resource after the GPU
+  # Operator sandbox device plugin binds the H100s to vfio-pci.
+  # Turn this back off before merging to main.
+  enabled: true
   pciHostDevices:
-    - pciDeviceSelector: "10DE:2237"
-      resourceName: "nvidia.com/GA102GL_A10G"
+    - pciDeviceSelector: "10DE:2321"
+      resourceName: "nvidia.com/GH100_H100L_94GB"

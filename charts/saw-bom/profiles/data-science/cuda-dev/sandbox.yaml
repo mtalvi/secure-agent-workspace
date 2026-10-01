@@ -16,12 +16,13 @@ spec:
       # device and the guest Podman runtime has the NVIDIA CDI spec.
       # See docs/gpu-passthrough.md.
       #
-      # Off by default. cuda-sandbox is enabled in the default data-science
-      # profile, so shipping this as true would pass --gpu on every default
-      # deploy and fail verification on clusters without passthrough.
+      # LaunchPad test only: this sandbox asks for both passed-through H100s.
+      # Turn enabled back to false before merging to main. cuda-sandbox is
+      # part of the default data-science profile, so true fails verification
+      # on clusters without a GPU.
       gpu:
-        enabled: false
-        count: 1
+        enabled: true
+        count: 2
     - name: toolbox
       type: generic
       enabled: false
