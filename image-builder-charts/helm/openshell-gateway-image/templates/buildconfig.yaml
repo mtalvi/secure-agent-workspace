@@ -232,7 +232,11 @@ spec:
       #!/usr/bin/env bash
       set -euo pipefail
       echo "Building NVIDIA kernel module against the running kernel..."
-      akmods --force || true
+      if command -v akmods >/dev/null 2>&1; then
+        akmods --force || true
+      else
+        dkms autoinstall || true
+      fi
       for _ in $(seq 1 60); do
         if lsmod | grep -q '^nvidia '; then break; fi
         modprobe nvidia 2>/dev/null || true
@@ -291,7 +295,7 @@ spec:
             {{- if .Values.gpu.enabled }}
             --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.driverRepoUrl }}' \
             --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.containerToolkitRepoUrl }}' \
-            --install kernel-devel,dkms,akmod-nvidia,nvidia-container-toolkit \
+            --install kernel-devel,dkms,kmod-nvidia-open-dkms,nvidia-driver,nvidia-container-toolkit \
             {{- end }}
             --mkdir /usr/lib/systemd/user \
             --copy-in /build/openshell-gateway.service:/usr/lib/systemd/user/ \
