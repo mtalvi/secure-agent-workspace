@@ -90,6 +90,21 @@ def test_invalid_signing_floor_fails_the_render():
     assert "signing.floor must be off, warn, enforce, or empty" in result.stderr
 
 
+def test_nvidia_repos_are_omitted_unless_gpu_enabled():
+    text = dockerfile()
+    assert "nvidia-container-toolkit" not in text
+    assert "nvidia-ctk" not in text
+    assert "akmod-nvidia" not in text
+
+
+def test_gpu_enabled_bakes_podman_cdi_not_a_docker_runtime():
+    text = dockerfile("--set", "gpu.enabled=true")
+    assert "akmod-nvidia,nvidia-container-toolkit" in text
+    assert "nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml" in text
+    assert "systemctl enable nvidia-driver-setup.service" in text
+    assert "nvidia-ctk runtime configure" not in text
+
+
 def test_the_two_verify_bundle_copies_are_identical():
     """verify-bundle exists twice: charts/openshell-saw/files/guest (cloud-init
     delivered, used by the offline installer tests) and this chart's files/
