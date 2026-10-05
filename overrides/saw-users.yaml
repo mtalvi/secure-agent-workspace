@@ -6,3 +6,10 @@ users:
   - name: alice
     profiles:
       - data-science
+    # LaunchPad test only. Both H100s on this node. Turn off before merging to main.
+    values:
+      vm:
+        gpu:
+          enabled: true
+          count: 2
+          deviceName: nvidia.com/GH100_H100L_94GB

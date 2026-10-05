@@ -53,6 +53,19 @@ vm:
   # Uses a guest-agent exec probe (`test -f /var/lib/saw/ready`). Off by
   # default: it needs qemu-guest-agent with guest-exec allowed in the image.
   readinessProbe: false
+  # GPU passthrough (KubeVirt hostDevices) into the gateway VM. Requires:
+  #   1. Bare-metal nodes (or a hypervisor that exposes an IOMMU). Standard
+  #      cloud GPU VMs such as AWS g5.2xlarge do not.
+  #   2. The GPU bound to vfio-pci on a node (NVIDIA GPU Operator
+  #      vfio-manager, label nvidia.com/gpu.workload.config=vm-passthrough).
+  #   3. A matching permittedHostDevices entry on the HyperConverged CR
+  #      (charts/openshift-cnv). deviceName must match that resourceName.
+  # Off by default. See docs/gpu-passthrough.md. LaunchPad hardware has not
+  # been tested yet; set deviceName to that machine's PCI resource name.
+  gpu:
+    enabled: false
+    count: 1
+    deviceName: "nvidia.com/GA102GL_A10G"
 
 # Versioned Bill of Materials for the software installed inside the VM.
 # The in-guest installer (files/installer/apply_bom.py) pulls each image by

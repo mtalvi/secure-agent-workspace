@@ -10,6 +10,19 @@ spec:
       image: quay.io/rh-ai-quickstart/nemoclaw-sandbox:latest
       providers:
         - nvidia
+      # Container-level GPU request (`openshell sandbox create --gpu`).
+      # Independent of the gateway VM's vm.gpu.enabled (KubeVirt hostDevices).
+      # A real GPU is attached only when the VM received a passed-through
+      # device and the guest Podman runtime has the NVIDIA CDI spec.
+      # See docs/gpu-passthrough.md.
+      #
+      # LaunchPad test only: this sandbox asks for both passed-through H100s.
+      # Turn enabled back to false before merging to main. cuda-sandbox is
+      # part of the default data-science profile, so true fails verification
+      # on clusters without a GPU.
+      gpu:
+        enabled: true
+        count: 2
     - name: toolbox
       type: generic
       enabled: false

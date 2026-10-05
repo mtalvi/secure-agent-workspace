@@ -45,6 +45,10 @@ OWNER_SUBJECT="${OWNER_SUBJECT:-}"
 SCRIPTS_DIR="${SCRIPTS_DIR:-scripts}"
 CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-podman}"
 GOVERNANCE_ENABLED="${GOVERNANCE_ENABLED:-true}"
+# KubeVirt hostDevices into the gateway VM. Off by default. Requires
+# bare-metal or IOMMU-capable nodes; see docs/gpu-passthrough.md.
+GPU_ENABLED="${GPU_ENABLED:-false}"
+GPU_COUNT="${GPU_COUNT:-1}"
 
 # Validate provider
 if [[ -z "${PROVIDER}" && -z "${GCP_SA_JSON}" ]]; then
@@ -190,6 +194,7 @@ helm upgrade --install "${OPENSHELL_SAW_NAME}" "${SAW_CHART}" \
   --set source.dataSourceNamespace="${NS}" \
   --set containerRuntime="${CONTAINER_RUNTIME}" \
   --set governance.enabled="${GOVERNANCE_ENABLED}" \
+  --set vm.gpu.enabled="${GPU_ENABLED}" --set vm.gpu.count="${GPU_COUNT}" \
   --set route.enabled=true --set route.dashboard=true \
   ${ROUTE_HOST:+--set route.host="${ROUTE_HOST}"} \
   ${APPS_DOMAIN:+--set route.webuiHost="${OPENSHELL_SAW_NAME}-webui-${DEPLOY_NS}.${APPS_DOMAIN}"} \

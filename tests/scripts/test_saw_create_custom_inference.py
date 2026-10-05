@@ -74,3 +74,11 @@ def test_defaults_are_unchanged(run):
     assert not bom_values.exists()
     bom = next(line for line in log.splitlines() if line.startswith("helm upgrade --install saw-bom"))
     assert " -f " not in bom
+    saw = next(line for line in log.splitlines() if line.startswith("helm upgrade --install cinf "))
+    assert "--set vm.gpu.enabled=false" in saw and "--set vm.gpu.count=1" in saw
+
+
+def test_gpu_enabled_is_forwarded(run):
+    log, _ = run(PROVIDER="build", MODEL="m", API_KEY="k", GPU_ENABLED="true", GPU_COUNT="2")
+    saw = next(line for line in log.splitlines() if line.startswith("helm upgrade --install cinf "))
+    assert "--set vm.gpu.enabled=true" in saw and "--set vm.gpu.count=2" in saw

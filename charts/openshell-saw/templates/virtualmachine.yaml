@@ -59,6 +59,12 @@ spec:
         resources:
           requests:
             memory: {{ .Values.vm.memory }}
+          {{- if .Values.vm.gpu.enabled }}
+          # KubeVirt requires an explicit memory limit (== request) on VMs that
+          # request hostDevices, so the scheduler can account for the device.
+          limits:
+            memory: {{ .Values.vm.memory }}
+          {{- end }}
         devices:
           # Send the serial console (where saw-install/saw-apply log) to the
           # virt-launcher pod's guest-console-log container, even when the
@@ -114,6 +120,15 @@ spec:
                 - name: ssh
                   port: 22
                   protocol: TCP
+          {{- if .Values.vm.gpu.enabled }}
+          # deviceName must match a resourceName in the cluster HyperConverged
+          # permittedHostDevices.pciHostDevices list. See docs/gpu-passthrough.md.
+          hostDevices:
+            {{- range $i := until (.Values.vm.gpu.count | int) }}
+            - deviceName: {{ $.Values.vm.gpu.deviceName | quote }}
+              name: gpu{{ $i }}
+            {{- end }}
+          {{- end }}
         firmware:
           bootloader:
             efi:

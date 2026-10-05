@@ -224,6 +224,57 @@ spec:
       # (PR #54 review round 2, 1).
       RUN printf '%s' {{ $signingFloor | quote }} > /build/saw/signing-mode
       {{- end }}
+      {{- if .Values.gpu.enabled }}
+      # First-boot NVIDIA driver build and Podman CDI spec. The kernel module
+      # must be compiled against the VM's running kernel, not the builder's.
+      # See docs/gpu-passthrough.md.
+      RUN cat > /build/nvidia-driver-setup.sh <<'GPUSETUP'
+      #!/usr/bin/env bash
+      set -euo pipefail
+      echo "Building NVIDIA kernel module against the running kernel..."
+      if command -v akmods >/dev/null 2>&1; then
+        akmods --force || true
+      else
+        dkms autoinstall || true
+      fi
+      for _ in $(seq 1 60); do
+        if lsmod | grep -q '^nvidia '; then break; fi
+        modprobe nvidia 2>/dev/null || true
+        sleep 5
+      done
+      if ! lsmod | grep -q '^nvidia '; then
+        echo "WARNING: nvidia kernel module did not load after 5 minutes." >&2
+        echo "The VM may not have a passed-through GPU, or the driver failed to build." >&2
+        exit 0
+      fi
+      if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo "WARNING: nvidia-smi not found even though the kernel module loaded." >&2
+        exit 0
+      fi
+      echo "=== nvidia-smi ==="
+      nvidia-smi || { echo "WARNING: nvidia-smi failed to query the GPU." >&2; exit 1; }
+      echo "=== Generating CDI spec for Podman ==="
+      mkdir -p /etc/cdi
+      nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+      echo "NVIDIA driver setup complete."
+      GPUSETUP
+
+      RUN cat > /build/nvidia-driver-setup.service <<'GPUUNIT'
+      [Unit]
+      Description=NVIDIA driver setup (first boot, GPU passthrough)
+      After=multi-user.target
+      ConditionPathExists=!/var/lib/nvidia-driver-setup.done
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=true
+      ExecStart=/usr/local/sbin/nvidia-driver-setup.sh
+      ExecStartPost=/usr/bin/touch /var/lib/nvidia-driver-setup.done
+
+      [Install]
+      WantedBy=multi-user.target
+      GPUUNIT
+      {{- end }}
 
       # Bake system packages + OpenShell binaries into the qcow2
       RUN virt-customize -a base.qcow2 \
@@ -241,11 +292,22 @@ spec:
             --run-command 'loginctl enable-linger cloud-user || mkdir -p /var/lib/systemd/linger && touch /var/lib/systemd/linger/cloud-user' \
             --run-command 'systemctl enable podman.socket' \
             {{- end }}
+            {{- if .Values.gpu.enabled }}
+            --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.driverRepoUrl }}' \
+            --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.containerToolkitRepoUrl }}' \
+            --install kernel-devel,dkms,kmod-nvidia-open-dkms,nvidia-driver,nvidia-container-toolkit \
+            {{- end }}
             --mkdir /usr/lib/systemd/user \
             --copy-in /build/openshell-gateway.service:/usr/lib/systemd/user/ \
             --copy-in /build/openshell-gateway-setup.service:/etc/systemd/system/ \
             --run-command 'mkdir -p /usr/local/sbin /usr/libexec/saw /etc/saw/trust /etc/containers/registries.d' \
             --copy-in /build/openshell-gateway-user-setup.sh:/usr/local/sbin/ \
+            {{- if .Values.gpu.enabled }}
+            --copy-in /build/nvidia-driver-setup.sh:/usr/local/sbin/ \
+            --copy-in /build/nvidia-driver-setup.service:/etc/systemd/system/ \
+            --run-command 'chmod 755 /usr/local/sbin/nvidia-driver-setup.sh' \
+            --run-command 'systemctl enable nvidia-driver-setup.service' \
+            {{- end }}
             --copy-in /build/saw/verify-bundle:/usr/libexec/saw/ \
             --copy-in /build/saw/saw.yaml:/etc/containers/registries.d/ \
             --copy-in /build/saw/cosign:/usr/local/bin/ \
