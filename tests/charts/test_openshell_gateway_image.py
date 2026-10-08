@@ -94,12 +94,12 @@ def test_nvidia_repos_are_omitted_unless_gpu_enabled():
     text = dockerfile()
     assert "nvidia-container-toolkit" not in text
     assert "nvidia-ctk" not in text
-    assert "akmod-nvidia" not in text
+    assert "kmod-nvidia-open-dkms" not in text
 
 
 def test_gpu_enabled_bakes_podman_cdi_not_a_docker_runtime():
     text = dockerfile("--set", "gpu.enabled=true")
-    assert "akmod-nvidia,nvidia-container-toolkit" in text
+    assert "kmod-nvidia-open-dkms-610.57.04,nvidia-driver-610.57.04,nvidia-driver-cuda-610.57.04,nvidia-container-toolkit" in text
     assert "nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml" in text
     assert "systemctl enable nvidia-driver-setup.service" in text
     assert "nvidia-ctk runtime configure" not in text

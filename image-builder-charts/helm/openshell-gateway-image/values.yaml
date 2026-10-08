@@ -44,11 +44,18 @@ build:
 # Only relevant when the VM will receive a KubeVirt hostDevices GPU, which
 # requires bare-metal or IOMMU-capable nodes. The kernel module is built on
 # first boot against the VM's running kernel (nvidia-driver-setup.service).
-# NVIDIA's repos lag new Fedora releases; confirm these URLs before enabling.
+# The repo must match build.fedoraCloud. Fedora 44's kernel 7.2 does not
+# build the 575 open module from the Fedora 41 repo (dma_is_direct is gone).
+# 610.57.04 is the open driver that includes the kernel 7.2 fixes.
 # See docs/gpu-passthrough.md.
 gpu:
   enabled: false
-  driverRepoUrl: "https://developer.download.nvidia.com/compute/cuda/repos/fedora41/x86_64/cuda-fedora41.repo"
+  driverRepoUrl: "https://developer.download.nvidia.com/compute/cuda/repos/fedora44/x86_64/cuda-fedora44.repo"
+  # NEVRA without the dist tag. virt-customize passes these to dnf.
+  openDkmsPackage: "kmod-nvidia-open-dkms-610.57.04"
+  driverPackage: "nvidia-driver-610.57.04"
+  # nvidia-smi moved out of nvidia-driver in the 610 packaging.
+  smiPackage: "nvidia-driver-cuda-610.57.04"
   containerToolkitRepoUrl: "https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo"
 
 output:
