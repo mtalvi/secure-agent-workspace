@@ -127,6 +127,10 @@ harness:
   cosign:
     identity: ""
     issuer: "https://token.actions.githubusercontent.com"
+    # Reuse successful digest verification for at most five minutes. Identity
+    # or issuer changes invalidate it immediately; 0 checks every apply.
+    # Expired verification requires registry/Sigstore access and fails closed.
+    cacheTtlSeconds: 300
 
 # Dropping an object from a SAW-BOM profile. report only logs what would be
 # deleted. on deletes it. Sandboxes are kept unless sandboxes is true, because
@@ -164,6 +168,25 @@ oidc:
   rolesClaim: "realm_access.roles"
   adminRole: "openshell-admin"
   userRole: "openshell-user"
+  # Extra CAs (PEM) the gateway and the oauth2-proxies trust for the issuer,
+  # never the VM's system trust store; a private key in it is refused. The
+  # gateway fetches the issuer at startup and exits when it cannot verify its
+  # certificate. Only needed when the issuer's certificate is not from a
+  # public CA. For the in-cluster
+  # Keycloak on a cluster with OpenShift's self-signed *.apps certificate the
+  # pattern does it for you (clusterCaSecret below); set caBundle for an
+  # external issuer (issuerUrl) with a private CA, e.g. your corporate root CA,
+  # or for the quickstart. Wins over clusterCaSecret. See
+  # docs/deployment-guide.md, "The issuer's certificate".
+  caBundle: ""
+  # For the in-cluster Keycloak (issuerUrl empty) and no caBundle: a Secret in
+  # this namespace with the cluster's ingress CA (key ca-bundle.crt), which
+  # the VM trusts. Needed when the cluster's *.apps certificate is not from a
+  # public CA (OpenShift's self-signed default); harmless otherwise. The
+  # pattern fills it in every user namespace (saw-users sets
+  # saw-ingress-ca; the saw-ingress-ca imperative job and pattern-secrets).
+  # The VM waits for the Secret to exist, like the provider Secrets.
+  clusterCaSecret: ""
 
 # Sandbox owner. `owner` is used for labels; `ownerSubject` is the owner's
 # OIDC subject (`openshell whoami`) and, when set, is added as admin to every
@@ -216,6 +239,10 @@ dashboard:
   image: "quay.io/gkrumbach07/openshell-dashboard:latest"
   proxyImage: "quay.io/oauth2-proxy/oauth2-proxy:v7.9.0"
   clientId: "openshell-dashboard"
+  # The dashboard and sandbox-UI oauth2-proxies verify the issuer: with the
+  # issuer CA (oidc.caBundle / oidc.clusterCaSecret) when one is configured,
+  # else with the image's public CAs.
+  # Skipping verification is only for debugging.
   insecureSkipIssuerTlsVerify: false
 
 # Governance interceptor — enforces signed sandbox policies.
@@ -225,9 +252,11 @@ dashboard:
 # gateway keeps resource admission on and bind mounts off, so a caller can
 # only attach a podman volume labelled openshell.ai/sandbox-attachable for
 # its own workspace (the installer labels each harness volume that way);
-# image and host-path mounts stay refused. Default off: turning it on lets
-# any signed-in user attach a labelled volume to a sandbox they create, so
-# set true only when a selected profile has a sandbox with a harnessRef
+# image and host-path mounts stay refused. With governance enabled, the
+# interceptor additionally requires an mTLS admin and exactly the installer's
+# read-only harness volume/target. Keep governance fail-closed when enabling
+# this switch; without it the gateway switch applies to all callers.
+# Default off: set true only when a selected profile has a harnessRef
 # (e.g. saw-bom's harnessEnabled). The installer fails fast with a clear error
 # if a harnessRef is applied while this is off.
 allowDriverConfig: false
