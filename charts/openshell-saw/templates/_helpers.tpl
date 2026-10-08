@@ -73,13 +73,27 @@ TCP port of the Keycloak issuer URL. 443 when the URL has no port.
 {{- end }}
 
 {{/*
-"host port" for an http(s) disk URL the CDI importer in this namespace must
-reach. Empty for docker://, the internal registry, or anything else.
-http defaults to port 80, https to 443, unless the URL names a port.
+"host port" for a disk URL the CDI importer in this namespace must reach:
+an http(s) URL (http defaults to port 80, https to 443, unless the URL names
+a port), or a docker:// image on a registry outside the cluster (its
+registry host, port 443 unless named). Empty for an in-cluster host (*.svc,
+the internal registry), a docker:// image without a registry host (a Docker
+Hub short name), or anything else. A registry that serves blobs from another
+host (a CDN) needs that host under egress.extraAllow too.
 */}}
 {{- define "openshell-sandbox.httpHostPort" -}}
 {{- $url := . | trim -}}
-{{- if regexMatch "^https?://" $url -}}
+{{- if hasPrefix "docker://" $url -}}
+{{- $authority := regexReplaceAll "/.*$" (trimPrefix "docker://" $url) "" -}}
+{{- $host := regexReplaceAll ":[0-9]+$" $authority "" -}}
+{{- $port := "443" -}}
+{{- if regexMatch ":[0-9]+$" $authority -}}
+{{- $port = regexReplaceAll "^.*:" $authority "" -}}
+{{- end -}}
+{{- if and (contains "." $host) (contains "/" (trimPrefix "docker://" $url)) (not (hasSuffix ".svc" $host)) (not (contains ".svc." $host)) -}}
+{{- printf "%s %s" $host $port -}}
+{{- end -}}
+{{- else if regexMatch "^https?://" $url -}}
 {{- $authority := regexReplaceAll "/.*$" (regexReplaceAll "^https?://" $url "") "" -}}
 {{- $host := regexReplaceAll ":[0-9]+$" $authority "" -}}
 {{- $port := "443" -}}
@@ -229,7 +243,23 @@ Provider credential Secrets attached to the VM, de-duplicated, as JSON list.
 {{- range .Values.additionalProviderSecrets -}}
   {{- if and . (not (has . $names)) -}}{{- $names = append $names . -}}{{- end -}}
 {{- end -}}
+{{- with include "openshell-sandbox.caBundleSecret" . -}}
+  {{- if not (has . $names) -}}{{- $names = append $names . -}}{{- end -}}
+{{- end -}}
 {{- toJson $names -}}
+{{- end }}
+
+{{/*
+The Secret holding the cluster's ingress CA (key ca-bundle.crt) the VM trusts
+for the issuer, or "". Only for the in-cluster Keycloak (oidc.issuerUrl
+empty) and only when no explicit oidc.caBundle is set: an external issuer has
+nothing to do with the cluster's ingress CA. Attached like the provider
+Secrets (secret disk, mounted under /run/saw/secrets/<name>).
+*/}}
+{{- define "openshell-sandbox.caBundleSecret" -}}
+{{- if and .Values.oidc.clusterCaSecret (not .Values.oidc.issuerUrl) (not .Values.oidc.caBundle) -}}
+{{- .Values.oidc.clusterCaSecret -}}
+{{- end -}}
 {{- end }}
 
 {{/*

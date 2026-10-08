@@ -134,6 +134,7 @@ The following diagrams are from the [NVIDIA Secure Agent Workspace OpenShift Vir
 | Software | Version |
 |---|---|
 | Red Hat OpenShift | 4.22+ |
+| Network plugin | OVN-Kubernetes (the OpenShift default), for each workspace's egress firewall; set `egress.enabled: false` otherwise |
 | OpenShift Virtualization operator | stable channel |
 | Red Hat Build of Keycloak operator | stable-v26 channel |
 | Helm CLI | 3.x |
@@ -193,6 +194,13 @@ make generate-keys
 # Mirrors images from quay.io/rh-ai-quickstart to the internal registry.
 # No build needed — images are pre-built by maintainers.
 make copy-images
+
+# 5b. Optional: check whether workspace VMs will trust Keycloak's
+# certificate. On a cluster with OpenShift's self-signed *.apps certificate the
+# pattern trusts the cluster's ingress CA by itself (saw-ingress-ca imperative
+# job); for an external issuer with a private CA (ISSUER=<url>) it prints the
+# oidc.caBundle snippet to add to overrides/saw-users.yaml.
+make check-oidc-ca
 
 # 6. Deploy the pattern (runs inside the VP utility container)
 # NOTE: The deploying branch must exist on the remote (origin).

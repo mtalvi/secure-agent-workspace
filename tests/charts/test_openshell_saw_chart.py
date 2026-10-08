@@ -428,6 +428,7 @@ DEFAULT_EGRESS_HOSTS = [
     "oauth2.googleapis.com",
     "www.googleapis.com",
     "iamcredentials.googleapis.com",
+    "gmail.googleapis.com",
 ]
 # A dnsName rule cannot express this. A new wildcard in a shipped profile
 # must be added here on purpose, not silently skipped.
@@ -1012,6 +1013,13 @@ def test_signing_mode_defaults_to_warn(default_docs):
     assert unit.index("saw-stage-installer") < unit.index("apply_bom.py install")
 
 
+@pytest.mark.parametrize("ttl", [0, 120, 300])
+def test_harness_signature_cache_ttl_reaches_installer(ttl):
+    docs = render("--set", f"harness.cosign.cacheTtlSeconds={ttl}")
+    cfg = json.loads(installer_data(docs)["config.json"])
+    assert cfg["harness"]["cosign"]["cacheTtlSeconds"] == ttl
+
+
 def test_enforce_without_trust_material_fails_at_render():
     err = render_error("--set", "signing.mode=enforce")
     assert "signing.mode enforce requires" in err
@@ -1085,3 +1093,137 @@ def test_bad_sandbox_ui_entries_fail_the_render(tmp_path, entry, message):
     values.write_text(yaml.safe_dump({"sandboxUi": [entry]}))
     result = helm_template(CHART, "--set", "sandboxName=saw-test", "-f", str(values))
     assert result.returncode != 0 and message in result.stderr
+
+
+def test_the_ca_bundle_reaches_the_installer(tmp_path):
+    pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+    values = tmp_path / "v.yaml"
+    values.write_text(yaml.safe_dump({"oidc": {"caBundle": pem}}))
+    config = json.loads(installer_data(render("-f", str(values)))["config.json"])
+    assert config["caBundle"] == pem
+    assert json.loads(installer_data(render())["config.json"])["caBundle"] == ""
+
+
+def test_the_cluster_ca_secret_is_used_for_the_in_cluster_keycloak_only(tmp_path):
+    """oidc.clusterCaSecret: the VM mounts that Secret like a provider Secret
+    (it waits for it) and the installer trusts its ca-bundle.crt. Not for an
+    external issuer, and an explicit caBundle wins."""
+    def secret_volumes(docs):
+        vols = docs[("VirtualMachine", "saw-test")]["spec"]["template"]["spec"]["volumes"]
+        return [v["secret"]["secretName"] for v in vols if "secret" in v]
+
+    docs = render("--set", "oidc.clusterCaSecret=saw-ingress-ca")
+    config = json.loads(installer_data(docs)["config.json"])
+    assert config["caBundleSecret"] == "saw-ingress-ca"
+    assert "saw-ingress-ca" in config["secrets"]
+    assert "saw-ingress-ca" in secret_volumes(docs)
+
+    pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+    for extra in ({"issuerUrl": "https://sso.example.com/realms/corp"}, {"caBundle": pem}):
+        values = tmp_path / "v.yaml"
+        values.write_text(yaml.safe_dump({"oidc": {"clusterCaSecret": "saw-ingress-ca", **extra}}))
+        docs = render("-f", str(values))
+        config = json.loads(installer_data(docs)["config.json"])
+        assert config["caBundleSecret"] == ""
+        assert "saw-ingress-ca" not in config["secrets"]
+        assert "saw-ingress-ca" not in secret_volumes(docs)
+
+    assert json.loads(installer_data(render())["config.json"])["caBundleSecret"] == ""
+
+
+def test_the_imperative_jobs_run_playbooks_that_exist():
+    """values-prod's imperative jobs, including saw-ingress-ca (the cluster's
+    ingress CA into Vault for the users' saw-ingress-ca Secret)."""
+    jobs = yaml.safe_load((ROOT / "values-prod.yaml").read_text())["clusterGroup"]["imperative"]["jobs"]
+    by_name = {j["name"]: j for j in jobs}
+    assert by_name["saw-ingress-ca"]["playbook"] == "ansible/playbooks/saw-ingress-ca.yaml"
+    for job in jobs:
+        (play,) = yaml.safe_load((ROOT / job["playbook"]).read_text())
+        assert play["hosts"] == "localhost", job["name"]
+    (play,) = yaml.safe_load((ROOT / "ansible/playbooks/saw-ingress-ca.yaml").read_text())
+    assert play["vars"]["prefix_base"] == "hub" and play["vars"]["key_name"] == "cluster-ingress-ca"
+
+
+def test_the_installer_configmap_needs_server_side_apply(default_docs):
+    """Found live: with client-side apply Argo CD copies an object into its
+    last-applied-configuration annotation, which may hold at most 262144
+    bytes, and the installer ConfigMap passed that ("metadata.annotations:
+    Too long"). saw-users syncs with ServerSideApply; this keeps the
+    ConfigMap itself well inside the 1 MiB object limit."""
+    cm = default_docs[("ConfigMap", "saw-test-installer")]
+    size = len(json.dumps(cm, separators=(",", ":")))
+    assert size < 768 * 1024, size
+
+
+def test_a_ca_bundle_with_a_private_key_does_not_render(tmp_path):
+    """Pasting the TLS Secret instead of its ca-bundle.crt would put the key
+    into the installer ConfigMap's config.json."""
+    pem = ("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+           "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----")
+    values = tmp_path / "v.yaml"
+    values.write_text(yaml.safe_dump({"oidc": {"caBundle": pem}}))
+    assert "private key" in render_error("-f", str(values))
+
+
+def test_the_ca_job_verifies_vault_before_sending_the_root_token():
+    (play,) = yaml.safe_load((ROOT / "ansible/playbooks/saw-ingress-ca.yaml").read_text())
+    calls = [t["ansible.builtin.uri"] for t in play["tasks"] if "ansible.builtin.uri" in t]
+    assert calls and all(c["validate_certs"] is True and c["ca_path"] == "{{ vault_ca }}"
+                         for c in calls)
+    assert play["vars"]["vault_ca"].endswith("/serviceaccount/service-ca.crt")
+
+
+def test_the_ca_job_refuses_an_unverifiable_vault_before_reading_the_token():
+    """Live on the GB200 the service CA was there (the Vault calls passed with
+    validate_certs); without it the play stops before it reads the token."""
+    (play,) = yaml.safe_load((ROOT / "ansible/playbooks/saw-ingress-ca.yaml").read_text())
+    names = [t["name"] for t in play["tasks"]]
+    guard = names.index("Refuse to send the root token to an unverified Vault")
+    assert guard < names.index("Read the Vault root token")
+    assert play["tasks"][guard]["when"] == "not vault_ca_file.stat.exists"
+
+
+# -- review follow-ups (harness hosts, gmail, docker:// with pullMethod pod) --
+
+HARNESS_EGRESS_HOSTS = ["ghcr.io", "pkg-containers.githubusercontent.com",
+                        "rekor.sigstore.dev", "tuf-repo-cdn.sigstore.dev"]
+
+
+def test_egress_allows_sigstore_and_ghcr_only_when_harness_bundles_are_on(default_docs):
+    """The installer re-verifies a harness image's cosign signature on every
+    apply and removes the harness when that fails; without these hosts every
+    image harness would be dropped on its first apply."""
+    _, allowed = _egress_names(default_docs)
+    assert not set(HARNESS_EGRESS_HOSTS) & set(allowed)
+    rules, allowed = _egress_names(render("--set", "allowDriverConfig=true"))
+    _assert_safe_order(rules)
+    assert set(HARNESS_EGRESS_HOSTS) <= set(allowed)
+    assert len(allowed) == len(set(allowed))
+    # Listed by hand as well: still one rule each.
+    _, allowed = _egress_names(render("--set", "allowDriverConfig=true",
+                                      "--set-string", "egress.extraAllow[0]=ghcr.io"))
+    assert allowed.count("ghcr.io") == 1
+
+
+def test_egress_allows_the_gmail_api():
+    _, allowed = _egress_names(render())
+    assert "gmail.googleapis.com" in allowed
+
+
+def test_egress_allows_an_outside_registry_only_for_pod_pulls():
+    image = "docker://registry.example.net:5000/x/disk@sha256:" + "a" * 64
+    _, allowed = _egress_names(render("--set-string", "source.registryURL=" + image))
+    assert "registry.example.net" not in allowed      # pullMethod node: the node pulls
+    rules, _ = _egress_names(render("--set-string", "source.registryURL=" + image,
+                                    "--set", "source.pullMethod=pod"))
+    (rule,) = [r for r in rules if r["to"].get("dnsName") == "registry.example.net"]
+    assert rule["ports"] == [{"protocol": "TCP", "port": 5000}]
+    # Already allowed on 443, in-cluster, or a Docker Hub short name: nothing added.
+    for url in ("docker://quay.io/x/disk:1",
+                "docker://image-registry.openshift-image-registry.svc:5000/ns/disk:latest",
+                "docker://fedora:latest"):
+        rules, allowed = _egress_names(render("--set-string", "source.registryURL=" + url,
+                                              "--set", "source.pullMethod=pod"))
+        assert len(allowed) == len(set(allowed)), url
+        assert not [r for r in rules if r["to"].get("dnsName") in
+                    ("image-registry.openshift-image-registry.svc", "fedora")], url
