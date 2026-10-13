@@ -69,7 +69,10 @@ def run(tmp_path):
     def _run(**env):
         full = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_LOG": str(log),
                 "FAKE_DIR": str(tmp_path), "OPENSHELL_SAW_NAME": "cinf", "SAW_CHART": "charts/openshell-saw",
-                "OWNER": "alice", "OIDC_ISSUER": "none", "SCRIPTS_DIR": str(scripts), **env}
+                "OWNER": "alice", "OIDC_ISSUER": "none", "SCRIPTS_DIR": str(scripts), **env,
+                "GPU_ENABLED_OVERRIDE": str("GPU_ENABLED" in env).lower(),
+                "GPU_COUNT_OVERRIDE": str("GPU_COUNT" in env).lower(),
+                "GPU_DEVICE_NAME_OVERRIDE": str("GPU_DEVICE_NAME" in env).lower()}
         result = subprocess.run(["bash", str(SCRIPT)], env=full, cwd=ROOT, capture_output=True, text=True)
         assert result.returncode == 0, result.stdout + result.stderr
         return log.read_text(), tmp_path / "bom-values.yaml"
