@@ -245,17 +245,33 @@ spec:
       if ! lsmod | grep -q '^nvidia '; then
         echo "WARNING: nvidia kernel module did not load after 5 minutes." >&2
         echo "The VM may not have a passed-through GPU, or the driver failed to build." >&2
-        exit 0
+        exit 1
       fi
       if ! command -v nvidia-smi >/dev/null 2>&1; then
         echo "WARNING: nvidia-smi not found even though the kernel module loaded." >&2
-        exit 0
+        exit 1
       fi
       echo "=== nvidia-smi ==="
       nvidia-smi || { echo "WARNING: nvidia-smi failed to query the GPU." >&2; exit 1; }
+      # nvidia-cap1 is created mode 0400, owned by host root. Rootless Podman
+      # maps the sandbox uid to a non-root host uid, so NVML then returns
+      # "Insufficient Permissions" even though /dev/nvidia* is 0666.
+      if [[ -e /dev/nvidia-caps/nvidia-cap1 ]]; then
+        chmod 666 /dev/nvidia-caps/nvidia-cap1
+      fi
       echo "=== Generating CDI spec for Podman ==="
+      # The NVIDIA udev rules label these nodes xserver_misc_device_t, which
+      # container_t cannot open. device_t plus container_use_devices is what
+      # lets a rootless Podman sandbox call NVML.
+      setsebool -P container_use_devices on 2>/dev/null || true
+      if command -v chcon >/dev/null 2>&1; then
+        chcon -t device_t /dev/nvidia* /dev/nvidia-caps/nvidia-cap* 2>/dev/null || true
+      fi
       mkdir -p /etc/cdi
       nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+      # Driver 610 NVML needs /dev/nvidia-caps. nvidia-ctk 1.20 writes the GPU
+      # nodes and skips these, so a sandbox gets "Insufficient Permissions".
+      python3 -c 'from pathlib import Path; p=Path("/etc/cdi/nvidia.yaml"); t=p.read_text(); n="        - path: /dev/nvidiactl\n          major: 195\n          minor: 255\n          fileMode: 438\n          permissions: rwm\n"; e="        - path: /dev/nvidia-caps/nvidia-cap1\n          major: 235\n          minor: 1\n          fileMode: 438\n          permissions: rwm\n        - path: /dev/nvidia-caps/nvidia-cap2\n          major: 235\n          minor: 2\n          fileMode: 438\n          permissions: rwm\n"; assert "nvidia-caps/nvidia-cap1" in t or t.count(n)==1, "nvidiactl block not found once in CDI spec"; p.write_text(t if "nvidia-caps/nvidia-cap1" in t else t.replace(n, n+e, 1))'
       echo "NVIDIA driver setup complete."
       GPUSETUP
 
@@ -295,7 +311,7 @@ spec:
             {{- if .Values.gpu.enabled }}
             --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.driverRepoUrl }}' \
             --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.containerToolkitRepoUrl }}' \
-            --install kernel-devel,dkms,kmod-nvidia-open-dkms,nvidia-driver,nvidia-container-toolkit \
+            --install kernel-devel,dkms,{{ .Values.gpu.openDkmsPackage }},{{ .Values.gpu.driverPackage }},{{ .Values.gpu.smiPackage }},nvidia-container-toolkit \
             {{- end }}
             --mkdir /usr/lib/systemd/user \
             --copy-in /build/openshell-gateway.service:/usr/lib/systemd/user/ \
