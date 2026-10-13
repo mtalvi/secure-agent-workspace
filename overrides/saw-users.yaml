@@ -5,6 +5,13 @@
 # firstName, lastName, roles, default [openshell-user]).
 # ownerSubject is the Keycloak subject from `openshell whoami`. Leave it
 # empty until that person has logged in once.
+defaults:
+  openshellSaw:
+    egress:
+      enabled: false
+    oidc:
+      trustClusterCaForExplicitIssuer: true
+
 users:
   - name: alice
     profiles:
