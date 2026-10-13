@@ -420,6 +420,15 @@ def load_config(path):
         for key in ("image", "proxyImage", "clientId"):
             if not dash.get(key):
                 raise InstallerError(f"installer config: dashboard.{key} is required when the dashboard is enabled")
+        session_store = dash.get("sessionStore") or {}
+        if not isinstance(session_store, dict):
+            raise InstallerError("installer config: dashboard.sessionStore must be an object")
+        if session_store.get("type", "cookie") not in ("cookie", "redis"):
+            raise InstallerError("installer config: dashboard.sessionStore.type must be cookie or redis")
+        if session_store.get("type") == "redis":
+            image = session_store.get("redisImage")
+            if not isinstance(image, str) or not IMAGE_RE.fullmatch(image):
+                raise InstallerError("installer config: dashboard.sessionStore.redisImage must be a container image")
     merged["sandboxUi"], merged["sandboxUiProxy"] = check_sandbox_ui(
         merged.get("sandboxUi"), merged.get("sandboxUiProxy"))
     harness_signature_cache_ttl(merged)
@@ -4408,11 +4417,14 @@ def setup_dashboard(shell, cfg, script, home):
         os.chmod(cookie_file, 0o600)
     shell.add_secret(cookie)
     issuer_ca = issuer_trust_paths(home)[0]
+    session_store = dash.get("sessionStore") or {}
     result = shell.run(["bash", str(script)], check=False, timeout=600, env={
         "RUNTIME": "podman",
         "DASHBOARD_ENABLED": "true",
         "DASHBOARD_IMAGE": dash["image"],
         "DASHBOARD_PROXY_IMAGE": dash["proxyImage"],
+        "DASHBOARD_SESSION_STORE_TYPE": session_store.get("type", "cookie"),
+        "DASHBOARD_REDIS_IMAGE": session_store.get("redisImage", ""),
         "DASHBOARD_CLIENT_ID": dash["clientId"],
         "DASHBOARD_COOKIE_SECRET": cookie,
         "DASHBOARD_REDIRECT_URL": dash["redirectUrl"],

@@ -51,6 +51,9 @@ changes here reach an existing VM after a restart (unlike cloud-init).
           "image" .Values.dashboard.image
           "proxyImage" .Values.dashboard.proxyImage
           "clientId" .Values.dashboard.clientId
+          "sessionStore" (dict
+            "type" (.Values.dashboard.sessionStore.type | default "cookie")
+            "redisImage" (.Values.dashboard.sessionStore.redisImage | default ""))
           "redirectUrl" $redirectUrl
           "insecureSkipTlsVerify" (.Values.dashboard.insecureSkipIssuerTlsVerify | default false))
       "signing" (dict "mode" $signMode "trustKeys" $trustKeys "identity" $signIdentity "issuer" $signIssuer)

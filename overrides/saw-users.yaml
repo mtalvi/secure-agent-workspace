@@ -16,3 +16,7 @@ users:
   - name: alice
     profiles:
       - data-science
+    values:
+      dashboard:
+        sessionStore:
+          type: redis

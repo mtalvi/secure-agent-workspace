@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -204,6 +205,20 @@ def test_dashboard_config_requires_images(ab, tmp_path):
         ab.load_config(path)
 
 
+@pytest.mark.parametrize("session_store, message", [
+    ({"type": "unknown"}, "dashboard.sessionStore.type"),
+    ({"type": "redis"}, "dashboard.sessionStore.redisImage"),
+    ({"type": "redis", "redisImage": "bad image"}, "dashboard.sessionStore.redisImage"),
+])
+def test_dashboard_rejects_invalid_session_store(ab, tmp_path, session_store, message):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"vmName": "x", "dashboard": {
+        "enabled": True, "image": "i", "proxyImage": "p", "clientId": "c",
+        "sessionStore": session_store}}))
+    with pytest.raises(ab.InstallerError, match=message):
+        ab.load_config(path)
+
+
 def test_dashboard_is_skipped_without_redirect(ab, fake_env, capsys, tmp_path):
     cfg = {"oidcIssuer": "https://kc/realms/openshell",
            "dashboard": {"enabled": True, "image": "i", "proxyImage": "p", "clientId": "c", "redirectUrl": ""}}
@@ -224,6 +239,45 @@ def test_dashboard_cookie_secret_is_kept_across_runs(ab, tmp_path, fake_env):
     assert first == second and len(first) == 32
     secret = tmp_path / ".config" / "openshell" / "dashboard-cookie-secret"
     assert oct(secret.stat().st_mode & 0o777) == "0o600"
+
+
+def test_dashboard_redis_session_store_units_and_cookie_rollback(tmp_path):
+    home = tmp_path / "home"
+    ca = home / ".local/state/openshell/tls/ca.crt"
+    ca.parent.mkdir(parents=True)
+    ca.write_text("test CA")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    for name, body in {
+        "systemctl": "exit 0",
+        "podman": 'if [[ "$1" == exec ]]; then echo PONG; fi',
+        "curl": "exit 0",
+    }.items():
+        path = fake_bin / name
+        path.write_text(f"#!/usr/bin/env bash\n{body}\n")
+        path.chmod(0o755)
+    env = {**os.environ, "HOME": str(home), "PATH": f"{fake_bin}:{os.environ['PATH']}",
+           "RUNTIME": "podman", "DASHBOARD_ENABLED": "true", "OIDC_ISSUER": "https://kc/realms/openshell",
+           "DASHBOARD_IMAGE": "dashboard", "DASHBOARD_PROXY_IMAGE": "proxy",
+           "DASHBOARD_COOKIE_SECRET": "cookie", "DASHBOARD_REDIRECT_URL": "https://webui/oauth2/callback",
+           "DASHBOARD_SESSION_STORE_TYPE": "redis", "DASHBOARD_REDIS_IMAGE": "redis@sha256:abc"}
+    script = Path(__file__).resolve().parents[2] / "charts/openshell-saw/files/installer/setup-dashboard.sh"
+    result = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    proxy_env = (home / ".config/openshell/dashboard-proxy.env").read_text()
+    assert "OAUTH2_PROXY_SESSION_STORE_TYPE=redis\n" in proxy_env
+    assert "OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://127.0.0.1:6379\n" in proxy_env
+    redis_unit = home / ".config/systemd/user/openshell-dashboard-redis.service"
+    assert "--bind 127.0.0.1" in redis_unit.read_text()
+    assert "--save \"\" --appendonly no" in redis_unit.read_text()
+    proxy_unit = (home / ".config/systemd/user/openshell-dashboard-proxy.service").read_text()
+    assert "Requires=openshell-dashboard-redis.service" in proxy_unit
+
+    env["DASHBOARD_SESSION_STORE_TYPE"] = "cookie"
+    result = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not redis_unit.exists()
+    assert "OAUTH2_PROXY_SESSION_STORE_TYPE" not in (home / ".config/openshell/dashboard-proxy.env").read_text()
 
 
 def test_failed_install_blocks_apply_even_if_components_exist(world):

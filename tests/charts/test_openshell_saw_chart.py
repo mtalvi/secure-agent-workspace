@@ -432,6 +432,15 @@ def test_cluster_domain_fills_routes_issuer_and_dashboard():
         installer_data(docs)["gateway.env"]
 
 
+def test_dashboard_redis_session_store_reaches_vm_installer():
+    config = json.loads(installer_data(render(
+        "--set", "dashboard.sessionStore.type=redis"))["config.json"])
+    assert config["dashboard"]["sessionStore"] == {
+        "type": "redis",
+        "redisImage": "docker.io/library/redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+    }
+
+
 DEFAULT_EGRESS_HOSTS = [
     "quay.io",
     "cdn.quay.io",

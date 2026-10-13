@@ -27,6 +27,12 @@ fi
 : "${DASHBOARD_COOKIE_SECRET:?}"
 : "${DASHBOARD_REDIRECT_URL:?DASHBOARD_REDIRECT_URL not set — was the *-webui route created?}"
 DASHBOARD_CLIENT_ID="${DASHBOARD_CLIENT_ID:-openshell-dashboard}"
+DASHBOARD_SESSION_STORE_TYPE="${DASHBOARD_SESSION_STORE_TYPE:-cookie}"
+case "${DASHBOARD_SESSION_STORE_TYPE}" in
+  cookie) ;;
+  redis) : "${DASHBOARD_REDIS_IMAGE:?Redis session store requires DASHBOARD_REDIS_IMAGE}" ;;
+  *) echo "Error: DASHBOARD_SESSION_STORE_TYPE must be cookie or redis." >&2; exit 1 ;;
+esac
 
 mkdir -p "${HOME}/.config/systemd/user" "${HOME}/.config/openshell"
 
@@ -60,6 +66,13 @@ if [[ -n "${DASHBOARD_ISSUER_CA:-}" && -r "${DASHBOARD_ISSUER_CA}" ]]; then
   CA_ENV="OAUTH2_PROXY_PROVIDER_CA_FILES=/etc/saw/issuer-ca.pem"
 fi
 
+PROXY_SESSION_ENV=""
+PROXY_REDIS_UNIT=""
+if [[ "${DASHBOARD_SESSION_STORE_TYPE}" == "redis" ]]; then
+  PROXY_SESSION_ENV=$'OAUTH2_PROXY_SESSION_STORE_TYPE=redis\nOAUTH2_PROXY_REDIS_CONNECTION_URL=redis://127.0.0.1:6379'
+  PROXY_REDIS_UNIT=$'Requires=openshell-dashboard-redis.service\nAfter=openshell-dashboard-redis.service'
+fi
+
 cat > "${HOME}/.config/openshell/dashboard-proxy.env" <<ENVEOF
 OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:8080
 OAUTH2_PROXY_UPSTREAMS=http://localhost:8090
@@ -84,6 +97,7 @@ OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true
 # Keycloak issues by default.
 OAUTH2_PROXY_SCOPE=openid email profile
 OAUTH2_PROXY_COOKIE_REFRESH=60s
+${PROXY_SESSION_ENV}
 ENVEOF
 chmod 600 "${HOME}/.config/openshell/dashboard.env" "${HOME}/.config/openshell/dashboard-proxy.env"
 
@@ -106,6 +120,7 @@ UNITEOF
 cat > "${HOME}/.config/systemd/user/openshell-dashboard-proxy.service" <<UNITEOF
 [Unit]
 Description=OpenShell Dashboard Auth Proxy (oauth2-proxy)
+${PROXY_REDIS_UNIT}
 
 [Service]
 Type=simple
@@ -119,7 +134,47 @@ RestartSec=5s
 WantedBy=default.target
 UNITEOF
 
+REDIS_UNIT="${HOME}/.config/systemd/user/openshell-dashboard-redis.service"
+if [[ "${DASHBOARD_SESSION_STORE_TYPE}" == "redis" ]]; then
+  cat > "${REDIS_UNIT}" <<UNITEOF
+[Unit]
+Description=OpenShell Dashboard OAuth session store (Redis)
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/${RUNTIME} rm -f openshell-dashboard-redis
+ExecStart=/usr/bin/${RUNTIME} run --rm --name openshell-dashboard-redis --network host ${DASHBOARD_REDIS_IMAGE} redis-server --bind 127.0.0.1 --protected-mode yes --save "" --appendonly no
+ExecStop=/usr/bin/${RUNTIME} stop -t 5 openshell-dashboard-redis
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
+UNITEOF
+else
+  systemctl --user disable --now openshell-dashboard-redis.service >/dev/null 2>&1 || true
+  rm -f "${REDIS_UNIT}"
+fi
+
 systemctl --user daemon-reload
+if [[ "${DASHBOARD_SESSION_STORE_TYPE}" == "redis" ]]; then
+  systemctl --user enable openshell-dashboard-redis.service
+  systemctl --user restart openshell-dashboard-redis.service
+  echo "Waiting for dashboard session store..."
+  redis_ready=0
+  for i in $(seq 1 30); do
+    if [[ "$(${RUNTIME} exec openshell-dashboard-redis redis-cli ping 2>/dev/null || true)" == "PONG" ]]; then
+      redis_ready=1
+      break
+    fi
+    sleep 2
+  done
+  if [[ "${redis_ready}" -ne 1 ]]; then
+    echo "Error: dashboard session store did not become ready." >&2
+    journalctl --user -u openshell-dashboard-redis.service -n 30 --no-pager >&2 || true
+    exit 1
+  fi
+fi
 # `enable --now` is a no-op on an already-running unit, so it silently keeps
 # a stale container alive (with a stale env-file, e.g. an old OIDC issuer)
 # across re-runs of this script — confirmed live: after fixing oidc.issuerUrl
