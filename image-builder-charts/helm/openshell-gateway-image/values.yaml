@@ -60,7 +60,8 @@ build:
 # See docs/gpu-passthrough.md.
 gpu:
   enabled: false
-  driverRepoUrl: "https://developer.download.nvidia.com/compute/cuda/repos/fedora44/x86_64/cuda-fedora44.repo"
+  driverRepoUrlX86_64: "https://developer.download.nvidia.com/compute/cuda/repos/fedora44/x86_64/cuda-fedora44.repo"
+  driverRepoUrlAarch64: "https://developer.download.nvidia.com/compute/cuda/repos/rhel10/sbsa/cuda-rhel10.repo"
   # NEVRA without the dist tag. virt-customize passes these to dnf.
   openDkmsPackage: "kmod-nvidia-open-dkms-610.57.04"
   driverPackage: "nvidia-driver-610.57.04"

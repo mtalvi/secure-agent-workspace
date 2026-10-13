@@ -3,11 +3,11 @@
 # bound to vfio-pci on at least one node. See docs/gpu-passthrough.md.
 #
 # pciDeviceSelector is VENDOR:DEVICE from `lspci -nnk` on the target node.
-# The entry below is an NVIDIA A10G (10de:2237), confirmed on an earlier AWS
-# test cluster. Replace it with the LaunchPad GPU's PCI id before enabling.
-# resourceName must match vm.gpu.deviceName in charts/openshell-saw/values.yaml.
+# Configure the exact PCI ID and resource name from the target cluster when
+# enabling this feature. resourceName must match vm.gpu.deviceName.
 gpu:
   enabled: false
-  pciHostDevices:
-    - pciDeviceSelector: "10DE:2237"
-      resourceName: "nvidia.com/GA102GL_A10G"
+  pciHostDevices: []
+  # pciHostDevices:
+  #   - pciDeviceSelector: "<vendor>:<device>"
+  #     resourceName: "example.com/gpu"

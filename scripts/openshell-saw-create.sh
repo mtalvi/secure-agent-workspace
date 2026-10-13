@@ -56,9 +56,9 @@ CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-podman}"
 GOVERNANCE_ENABLED="${GOVERNANCE_ENABLED:-true}"
 GOVERNANCE_ENGINE="${GOVERNANCE_ENGINE:-interceptor}"
 DASHBOARD="${DASHBOARD:-false}"
-GPU_ENABLED_OVERRIDE="${GPU_ENABLED_OVERRIDE:-${GPU_ENABLED+x}}"
-GPU_COUNT_OVERRIDE="${GPU_COUNT_OVERRIDE:-${GPU_COUNT+x}}"
-GPU_DEVICE_NAME_OVERRIDE="${GPU_DEVICE_NAME_OVERRIDE:-${GPU_DEVICE_NAME+x}}"
+GPU_ENABLED_OVERRIDE="${GPU_ENABLED_OVERRIDE:-${GPU_ENABLED+true}}"
+GPU_COUNT_OVERRIDE="${GPU_COUNT_OVERRIDE:-${GPU_COUNT+true}}"
+GPU_DEVICE_NAME_OVERRIDE="${GPU_DEVICE_NAME_OVERRIDE:-${GPU_DEVICE_NAME+true}}"
 GPU_ENABLED="${GPU_ENABLED:-false}"
 GPU_COUNT="${GPU_COUNT:-1}"
 GPU_DEVICE_NAME="${GPU_DEVICE_NAME:-}"
@@ -80,6 +80,23 @@ if ! python3 -c 'import yaml' >/dev/null 2>&1; then
   echo "Error: python3 with PyYAML is required for network topology discovery." >&2
   exit 1
 fi
+python3 - "${SAW_VALUES_FILE}" "${GPU_ENABLED_OVERRIDE}" "${GPU_ENABLED}" \
+  "${GPU_COUNT_OVERRIDE}" "${GPU_COUNT}" "${GPU_DEVICE_NAME_OVERRIDE}" "${GPU_DEVICE_NAME}" <<'PY'
+import sys
+import yaml
+
+path, enabled_override, enabled_arg, count_override, count_arg, name_override, name_arg = sys.argv[1:]
+values = yaml.safe_load(open(path)) if path else {}
+gpu = ((values or {}).get("vm") or {}).get("gpu") or {}
+enabled = enabled_arg if enabled_override == "true" else gpu.get("enabled", False)
+count = count_arg if count_override == "true" else gpu.get("count", 1)
+name = name_arg if name_override == "true" else gpu.get("deviceName", "")
+if str(enabled).lower() == "true":
+    if not name:
+        raise SystemExit("Error: GPU VM needs vm.gpu.deviceName in SAW_VALUES_FILE or GPU_DEVICE_NAME")
+    if not str(count).isdigit() or int(count) < 1:
+        raise SystemExit("Error: GPU VM needs a positive vm.gpu.count")
+PY
 if [[ "${DASHBOARD}" != true && "${DASHBOARD}" != false ]]; then
   echo "Error: DASHBOARD must be true or false." >&2
   exit 1

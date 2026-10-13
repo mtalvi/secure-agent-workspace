@@ -3698,6 +3698,13 @@ class ProfileApplier:
                 if not self.cli("sandbox", "get", sb.name, *ws_args(ws.name), check=False, quiet=True).ok:
                     failures.append(f"sandbox '{sb.name}' in '{ws.name}' is missing")
                     continue
+                if sb.gpu_enabled:
+                    gpu = self.cli("sandbox", "exec", "-n", sb.name, *ws_args(ws.name),
+                                   "--no-tty", "--", "nvidia-smi", "-L",
+                                   check=False, quiet=True)
+                    if not gpu.ok:
+                        detail = (gpu.err or gpu.out).strip().splitlines()[-1:] or [f"exit {gpu.rc}"]
+                        failures.append(f"GPU unavailable in sandbox '{sb.name}': {detail[0]}")
                 if sb.type in ("openclaw", "nemoclaw"):
                     # The agent setup steps are best effort; this is what
                     # catches an image whose OpenClaw cannot run under the

@@ -98,6 +98,26 @@ def test_defaults_are_unchanged(run):
     bom = next(line for line in log.splitlines() if line.startswith("helm upgrade --install saw-bom"))
     assert " -f " not in bom
     assert "oc get route cinf-dashboard" not in log
+    assert "vm.gpu." not in _saw_helm(log)
+
+
+def test_gpu_arguments_override_chart_values(run):
+    log, _ = run(PROVIDER="build", MODEL="m", API_KEY="k", GPU_ENABLED="true",
+                 GPU_COUNT="2", GPU_DEVICE_NAME="example.com/gpu")
+    saw = _saw_helm(log)
+    assert "vm.gpu.enabled=true" in saw
+    assert "vm.gpu.count=2" in saw
+    assert "vm.gpu.deviceName=example.com/gpu" in saw
+
+
+def test_gpu_values_file_is_not_overridden_by_defaults(run, tmp_path):
+    values = tmp_path / "gpu.yaml"
+    values.write_text(yaml.safe_dump({"vm": {"gpu": {"enabled": True, "count": 2,
+                                                       "deviceName": "example.com/gpu"}}}))
+    log, _ = run(PROVIDER="build", MODEL="m", API_KEY="k", SAW_VALUES_FILE=str(values))
+    saw = _saw_helm(log)
+    assert f"-f {values}" in saw
+    assert "--set vm.gpu." not in saw
 
 
 def test_values_overlay_and_discovered_topology_are_passed_to_saw_chart(run, tmp_path):
