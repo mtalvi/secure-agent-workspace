@@ -112,6 +112,10 @@ clusterGroup:
       name: governance-interceptor
       namespace: openshell-agents
       path: charts/governance-interceptor
+      # Use the native in-cluster build until the public GHCR tag includes arm64.
+      overrides:
+        - name: image
+          value: image-registry.openshift-image-registry.svc:5000/openshell-agents/governance-interceptor:v0.1.2
       syncPolicy:
         automated:
           prune: true
