@@ -16,3 +16,9 @@ profiles:
 # needs allowDriverConfig=true there (saw-users sets this for you from the
 # same user.harnessEnabled flag).
 harnessEnabled: false
+
+# Optional native image for every type: nemoclaw sandbox in selected profiles.
+# Set this through saw-users defaults or a local values file when the default
+# GHCR tag does not include the VM architecture. Leave empty to use each
+# profile's pinned/default image unchanged.
+nemoclawSandboxImage: ""

@@ -86,6 +86,18 @@ def test_demo_harness_true_ships_the_bundle_and_ref():
     assert "harnessRef" in data["profiles__data-science__default__sandbox.yaml"]
     assert harness_key("ds-default", "harness.yaml") in data
     assert "harness__ds-default__map" in data
+
+
+def test_nemoclaw_image_override_keeps_other_sandbox_images():
+    image = "ghcr.io/example/nemoclaw-sandbox@sha256:" + "a" * 64
+    docs = render(CHART, f"--set-string=nemoclawSandboxImage={image}")
+    data = docs[("ConfigMap", "saw-bom-profiles")]["data"]
+    for key in ("profiles__data-science__default__sandbox.yaml",
+                "profiles__data-science__cuda-dev__sandbox.yaml"):
+        sandboxes = yaml.safe_load(data[key])["spec"]["sandboxes"]
+        assert all(sb["image"] == image for sb in sandboxes if sb["type"] == "nemoclaw")
+        assert all(sb["image"] != image for sb in sandboxes if sb["type"] != "nemoclaw")
+    assert "harnessRef" in data["profiles__data-science__default__sandbox.yaml"]
     assert "harness-index.yaml" in data
 
 

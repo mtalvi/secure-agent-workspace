@@ -211,6 +211,13 @@ an enabled workspace). pattern-secrets syncs only these.
 {{- if $user.harnessEnabled -}}
 {{- $_ := set $bomValues "harnessEnabled" true -}}
 {{- end -}}
+{{- $nemoclawImage := $root.Values.defaults.nemoclawSandboxImage | default "" -}}
+{{- if hasKey $user "nemoclawSandboxImage" -}}
+{{- $nemoclawImage = $user.nemoclawSandboxImage -}}
+{{- end -}}
+{{- if $nemoclawImage -}}
+{{- $_ := set $bomValues "nemoclawSandboxImage" $nemoclawImage -}}
+{{- end -}}
 {{- toYaml $bomValues -}}
 {{- end -}}
 

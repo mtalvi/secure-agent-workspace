@@ -205,6 +205,15 @@ def test_demo_harness_turns_on_allow_driver_config(tmp_path):
     assert helm_values(app(docs, "saw-alice"))["allowDriverConfig"] is True
 
 
+def test_nemoclaw_image_override_reaches_each_users_bom(tmp_path):
+    default_image = "ghcr.io/example/nemoclaw-sandbox:arm64"
+    bob_image = "ghcr.io/example/nemoclaw-sandbox:other"
+    docs = docs_from(render_file(tmp_path, [ALICE, dict(BOB, nemoclawSandboxImage=bob_image)],
+                                 extra={"defaults": {"nemoclawSandboxImage": default_image}}))
+    assert helm_values(app(docs, "saw-alice-bom"))["nemoclawSandboxImage"] == default_image
+    assert helm_values(app(docs, "saw-bob-bom"))["nemoclawSandboxImage"] == bob_image
+
+
 def test_demo_harness_off_leaves_allow_driver_config_unset(tmp_path):
     docs = docs_from(render_file(tmp_path, [ALICE]))
     assert "allowDriverConfig" not in helm_values(app(docs, "saw-alice"))

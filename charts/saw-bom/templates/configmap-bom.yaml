@@ -4,10 +4,15 @@
 {{- range $profile := .Values.profiles }}
 {{- $files := $.Files.Glob (printf "profiles/%s/**/*.yaml" $profile) }}
 {{- range $path, $_ := $files }}
-{{- if and (hasSuffix "sandbox.yaml" $path) (not $.Values.harnessEnabled) }}
+{{- if and (hasSuffix "sandbox.yaml" $path) (or (not $.Values.harnessEnabled) $.Values.nemoclawSandboxImage) }}
 {{- $doc := $.Files.Get $path | fromYaml }}
 {{- range $sb := (($doc.spec).sandboxes | default list) }}
+{{- if and $.Values.nemoclawSandboxImage (eq ($sb.type | default "") "nemoclaw") }}
+{{- $_ := set $sb "image" $.Values.nemoclawSandboxImage }}
+{{- end }}
+{{- if not $.Values.harnessEnabled }}
 {{- $_ := unset $sb "harnessRef" }}
+{{- end }}
 {{- end }}
 {{- $_ := set $profileFiles $path (toYaml $doc) }}
 {{- else }}

@@ -22,6 +22,9 @@ pruneOnRemove: false
 defaults:
   profiles:
     - data-science
+  # Optional native NemoClaw sandbox image for all users. A user's own
+  # nemoclawSandboxImage can override it; empty keeps profile defaults.
+  nemoclawSandboxImage: ""
   # Shared hub prefix. Set vaultPrefix on a user for a private path
   # (secret/data/hub/saw-<user>/<generation> is what the self-service portal writes).
   # This chart does not create Vault entries.
