@@ -1,4 +1,4 @@
-{{- $imageName := ternary "openshell-gateway-docker" "openshell-gateway" (eq .Values.containerRuntime "docker") -}}
+{{- $imageName := include "openshell-gateway-image.imageName" . -}}
 {{- $signingFloor := .Values.signing.floor | default "" -}}
 {{- if and $signingFloor (not (or (eq $signingFloor "off") (eq $signingFloor "warn") (eq $signingFloor "enforce"))) }}
 {{- fail (printf "signing.floor must be off, warn, enforce, or empty, got %q" $signingFloor) }}
@@ -225,9 +225,21 @@ spec:
       RUN printf '%s' {{ $signingFloor | quote }} > /build/saw/signing-mode
       {{- end }}
       {{- if .Values.gpu.enabled }}
-      # First-boot NVIDIA driver build and Podman CDI spec. The kernel module
-      # must be compiled against the VM's running kernel, not the builder's.
-      # See docs/gpu-passthrough.md.
+      # Install packages for the guest architecture while customizing the disk.
+      # The module itself must be built for the running VM kernel on first boot.
+      RUN cat > /build/install-gpu-packages.sh <<'GPUPACKAGES'
+      #!/usr/bin/env bash
+      set -euo pipefail
+      case "$(uname -m)" in
+        x86_64) repo={{ .Values.gpu.driverRepoUrlX86_64 | quote }} ;;
+        aarch64) repo={{ .Values.gpu.driverRepoUrlAarch64 | quote }} ;;
+        *) echo "Unsupported GPU guest architecture: $(uname -m)" >&2; exit 1 ;;
+      esac
+      dnf config-manager addrepo --from-repofile="$repo"
+      dnf config-manager addrepo --from-repofile={{ .Values.gpu.containerToolkitRepoUrl | quote }}
+      dnf install -y kernel-devel dkms {{ .Values.gpu.openDkmsPackage }} {{ .Values.gpu.driverPackage }} {{ .Values.gpu.smiPackage }} nvidia-container-toolkit
+      GPUPACKAGES
+
       RUN cat > /build/nvidia-driver-setup.sh <<'GPUSETUP'
       #!/usr/bin/env bash
       set -euo pipefail
@@ -253,26 +265,7 @@ spec:
       fi
       echo "=== nvidia-smi ==="
       nvidia-smi || { echo "WARNING: nvidia-smi failed to query the GPU." >&2; exit 1; }
-      # nvidia-cap1 is created mode 0400, owned by host root. Rootless Podman
-      # maps the sandbox uid to a non-root host uid, so NVML then returns
-      # "Insufficient Permissions" even though /dev/nvidia* is 0666.
-      if [[ -e /dev/nvidia-caps/nvidia-cap1 ]]; then
-        chmod 666 /dev/nvidia-caps/nvidia-cap1
-      fi
-      echo "=== Generating CDI spec for Podman ==="
-      # The NVIDIA udev rules label these nodes xserver_misc_device_t, which
-      # container_t cannot open. device_t plus container_use_devices is what
-      # lets a rootless Podman sandbox call NVML.
-      setsebool -P container_use_devices on 2>/dev/null || true
-      if command -v chcon >/dev/null 2>&1; then
-        chcon -t device_t /dev/nvidia* /dev/nvidia-caps/nvidia-cap* 2>/dev/null || true
-      fi
-      mkdir -p /etc/cdi
-      nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-      # Driver 610 NVML needs /dev/nvidia-caps. nvidia-ctk 1.20 writes the GPU
-      # nodes and skips these, so a sandbox gets "Insufficient Permissions".
-      python3 -c 'from pathlib import Path; p=Path("/etc/cdi/nvidia.yaml"); t=p.read_text(); n="        - path: /dev/nvidiactl\n          major: 195\n          minor: 255\n          fileMode: 438\n          permissions: rwm\n"; e="        - path: /dev/nvidia-caps/nvidia-cap1\n          major: 235\n          minor: 1\n          fileMode: 438\n          permissions: rwm\n        - path: /dev/nvidia-caps/nvidia-cap2\n          major: 235\n          minor: 2\n          fileMode: 438\n          permissions: rwm\n"; assert "nvidia-caps/nvidia-cap1" in t or t.count(n)==1, "nvidiactl block not found once in CDI spec"; p.write_text(t if "nvidia-caps/nvidia-cap1" in t else t.replace(n, n+e, 1))'
-      echo "NVIDIA driver setup complete."
+      echo "NVIDIA driver module setup complete."
       GPUSETUP
 
       RUN cat > /build/nvidia-driver-setup.service <<'GPUUNIT'
@@ -290,6 +283,23 @@ spec:
       [Install]
       WantedBy=multi-user.target
       GPUUNIT
+
+      RUN echo '{{ .Files.Get "files/saw-gpu-devices.sh" | b64enc }}' | base64 -d > /build/saw-gpu-devices.sh
+      RUN echo '{{ .Files.Get "files/saw-patch-cdi-caps.py" | b64enc }}' | base64 -d > /build/saw-patch-cdi-caps.py
+      RUN cat > /build/saw-gpu-devices.service <<'GPUDEVICES'
+      [Unit]
+      Description=Prepare NVIDIA devices and CDI for rootless Podman on every boot
+      Wants=nvidia-driver-setup.service
+      After=nvidia-driver-setup.service systemd-udev-settle.service
+      Before=saw-install.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/saw-gpu-devices.sh
+
+      [Install]
+      WantedBy=multi-user.target
+      GPUDEVICES
       {{- end }}
 
       # Bake system packages + OpenShell binaries into the qcow2
@@ -309,9 +319,9 @@ spec:
             --run-command 'systemctl enable podman.socket' \
             {{- end }}
             {{- if .Values.gpu.enabled }}
-            --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.driverRepoUrl }}' \
-            --run-command 'dnf config-manager addrepo --from-repofile={{ .Values.gpu.containerToolkitRepoUrl }}' \
-            --install kernel-devel,dkms,{{ .Values.gpu.openDkmsPackage }},{{ .Values.gpu.driverPackage }},{{ .Values.gpu.smiPackage }},nvidia-container-toolkit \
+            --run-command 'mkdir -p /usr/local/sbin' \
+            --copy-in /build/install-gpu-packages.sh:/usr/local/sbin/ \
+            --run-command 'chmod 755 /usr/local/sbin/install-gpu-packages.sh && /usr/local/sbin/install-gpu-packages.sh' \
             {{- end }}
             --mkdir /usr/lib/systemd/user \
             --copy-in /build/openshell-gateway.service:/usr/lib/systemd/user/ \
@@ -321,8 +331,11 @@ spec:
             {{- if .Values.gpu.enabled }}
             --copy-in /build/nvidia-driver-setup.sh:/usr/local/sbin/ \
             --copy-in /build/nvidia-driver-setup.service:/etc/systemd/system/ \
-            --run-command 'chmod 755 /usr/local/sbin/nvidia-driver-setup.sh' \
-            --run-command 'systemctl enable nvidia-driver-setup.service' \
+            --copy-in /build/saw-gpu-devices.sh:/usr/local/sbin/ \
+            --copy-in /build/saw-patch-cdi-caps.py:/usr/local/sbin/ \
+            --copy-in /build/saw-gpu-devices.service:/etc/systemd/system/ \
+            --run-command 'chmod 755 /usr/local/sbin/nvidia-driver-setup.sh /usr/local/sbin/saw-gpu-devices.sh /usr/local/sbin/saw-patch-cdi-caps.py' \
+            --run-command 'systemctl enable nvidia-driver-setup.service saw-gpu-devices.service' \
             {{- end }}
             --copy-in /build/saw/verify-bundle:/usr/libexec/saw/ \
             --copy-in /build/saw/saw.yaml:/etc/containers/registries.d/ \

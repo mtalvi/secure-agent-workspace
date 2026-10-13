@@ -115,6 +115,9 @@ def test_sandbox_create_passes_gpu_when_the_profile_asks(ab, fake_env, config, p
     onboard = fake_env.other_calls("nemoclaw")[0]
     assert onboard["gpu"] == "" and onboard["gpu_count"] == ""
     assert "--sandbox-gpu" not in onboard["args"] and "--gpu" not in onboard["args"]
+    make_applier(ab, config, creds).verify(profiles)
+    assert any(call[:2] == ["sandbox", "exec"] and ["nvidia-smi", "-L"] == call[-2:]
+               for call in fake_env.openshell_calls())
 
 
 def test_nemoclaw_gets_the_provider_key_via_environment(ab, fake_env, config, profiles, creds):
