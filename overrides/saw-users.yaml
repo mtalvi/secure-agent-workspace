@@ -4,3 +4,4 @@ users:
   - name: amdtest
     profiles:
       - data-science
+    harnessEnabled: true
