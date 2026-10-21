@@ -1,3 +1,7 @@
-# Add real account names here after creating them with keycloak-add-users.
-# Each entry creates saw-<name>. Demo entries are in saw-users-demo.yaml.
-users: []
+# Test-only PR #126 E2E user configuration.
+users:
+  - name: pa-e2e
+    profiles:
+      - data-science
+      - personal-assistant
+    harnessEnabled: true
