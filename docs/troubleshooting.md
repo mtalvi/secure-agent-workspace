@@ -57,7 +57,7 @@ In the 2026-10-11 test, the live NVIDIA profile still listed `integrate.api.nvid
 
 ## Routes return 503 or 504
 
-Check that the gateway `virt-launcher` pod has `openshell.pattern/role=gateway` and that `saw-vm` admits the Route's backend port. Check the `openshift-ingress` namespace label `policy-group.network.openshift.io/ingress` and the ingress controller publishing strategy. Host-networked router pods need the ingress peer's empty `podSelector` alongside that namespace selector. Also check that the VM and its service endpoints are ready. The test cluster's webui and sandbox UI Routes answered with HTTP 302 after NetworkPolicy was enabled.
+Check that the gateway `virt-launcher` pod has `openshell.pattern/role=gateway` and that `saw-vm` admits the Route's backend port. Check the `openshift-ingress` namespace label `policy-group.network.openshift.io/ingress` and the ingress controller publishing strategy. Keep router peers as namespace-only selectors, as in the [OpenShift allow-from-router example](https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html/network_security/network-policy). On the tested OpenShift 4.22 OVN-Kubernetes cluster, adding a peer `podSelector: {}` excluded routers on other nodes, so requests succeeded only when they reached the router on the VM's node. Also check that the VM and its service endpoints are ready.
 
 ## Disk import or clone is stuck
 
