@@ -24,3 +24,18 @@ users:
 - name: bob
   webSearch:
     enabled: false
+  profiles:
+  - custom-inference
+  values:
+    networkPolicy:
+      extraEgress:
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshell-agents
+          podSelector:
+            matchLabels:
+              app: pr123-keyless-inference
+        ports:
+        - protocol: TCP
+          port: 8000
