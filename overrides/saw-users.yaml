@@ -16,7 +16,7 @@ defaults:
       - ip: 10.10.10.12
         port: 6443
     credentialProxy:
-      image: image-registry.openshift-image-registry.svc:5000/saw-images/saw-credential-proxy@sha256:2eceb802f684ac21843f3f2c4ed2186b8f659f050245f27fc44c5762d95c5d47
+      image: image-registry.openshift-image-registry.svc:5000/saw-images/saw-credential-proxy@sha256:8eb27a24f1607d2623c9f4c3fefb7838c5896c3408902ab637b55b41ca0eaa99
 users:
 - name: alice
   webSearch:
