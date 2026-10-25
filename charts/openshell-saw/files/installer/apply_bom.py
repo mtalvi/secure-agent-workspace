@@ -5078,9 +5078,19 @@ class ProfileApplier:
                   # .openclaw, say) keeps its metadata; a new one gets the
                   # archived mode. The diff covers the non-directory members:
                   # directory mtimes drift as soon as anything is written.
-                  f"tar -xzf {self.PRESERVE_ARCHIVE} --no-overwrite-dir && "
-                  f"tar -tzf {self.PRESERVE_ARCHIVE} | grep -v '/$' | "
-                  f"tar -dzf {self.PRESERVE_ARCHIVE} -T - && rm -f {self.PRESERVE_ARCHIVE}")
+                  f"tar -xzf {self.PRESERVE_ARCHIVE} --no-overwrite-dir "
+                  "--same-permissions --no-same-owner || exit 1; "
+                  # An unprivileged restore owns files as the replacement's
+                  # runtime user; the archive may contain image-owned files
+                  # with another uid/gid. Verify contents, links and modes,
+                  # allowing only those expected ownership differences.
+                  f"diffs=$(LC_ALL=C tar -tzf {self.PRESERVE_ARCHIVE} | grep -v '/$' | "
+                  f"LC_ALL=C tar -dzf {self.PRESERVE_ARCHIVE} --quoting-style=escape -T - 2>&1); "
+                  "rc=$?; if [ \"$rc\" -gt 1 ]; then printf '%s\\n' \"$diffs\"; exit 1; fi; "
+                  "unexpected=$(printf '%s\\n' \"$diffs\" | "
+                  "LC_ALL=C grep -v -E ': (Uid|Gid) differs$' | sed '/^$/d'); "
+                  "[ -z \"$unexpected\" ] || { printf '%s\\n' \"$unexpected\"; exit 1; }; "
+                  f"rm -f {self.PRESERVE_ARCHIVE}")
         done = self.cli("sandbox", "exec", "-n", sb.name, *ws_args(ws.name), "--no-tty", "--",
                         "sh", "-c", script, check=False)
         if not done.ok:
