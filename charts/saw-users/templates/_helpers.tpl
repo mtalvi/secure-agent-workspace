@@ -287,9 +287,26 @@ the shared prefix for the SSH key, and only the Secrets their profiles read.
 {{- define "saw-users.vaultPrefix" -}}
 {{- $user := .user -}}
 {{- $root := .root -}}
+{{- $metaKeys := dict -}}
+{{- $credentialKeys := dict -}}
+{{- range (include "saw-users.credentialBindings" . | fromJsonArray) -}}
+{{- $_ := set $credentialKeys (printf "%s/%s" .name .key) true -}}
+{{- end -}}
+{{- range (include "saw-users.userCatalog" . | fromJsonArray) -}}
+{{- range $secret, $entry := .secrets | default dict -}}
+{{- $keys := index $metaKeys $secret | default (list "provider") -}}
+{{- range $entry.fields | default list -}}
+{{- if and (ne .kind "secret") (not (hasKey $credentialKeys (printf "%s/%s" $secret .key))) -}}
+{{- $keys = append $keys .key -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $metaKeys $secret ($keys | uniq | sortAlpha) -}}
+{{- end -}}
+{{- end -}}
 {{- toYaml (dict "vaultPrefix" ($user.vaultPrefix | default $root.Values.defaults.vaultPrefix)
       "sshVaultPrefix" $root.Values.defaults.sshVaultPrefix
       "secrets" (include "saw-users.secretNames" . | fromJsonArray)
+      "metaKeys" $metaKeys
       "clusterCaSecret" ($root.Values.defaults.clusterCaSecret | default "")) -}}
 {{- end -}}
 

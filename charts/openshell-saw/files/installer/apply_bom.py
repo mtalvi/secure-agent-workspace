@@ -1702,6 +1702,23 @@ def check_provider_type(provider, configured):
             f"credential, but its Secret '{provider.credential_secret}' is for '{configured}'")
 
 
+def check_binding_provider(provider, configured, binding):
+    allowed = set(binding["providers"])
+    if ((configured and configured not in allowed) or
+            (not configured and not allowed.intersection({provider.type, nemoclaw_provider(provider)}))):
+        raise InstallerError(f"Secret '{provider.credential_secret}' provider type is not allowed "
+                             "by credentialProxy.secrets")
+
+
+def check_proxy_endpoint(url, what):
+    if url.startswith("http://"):
+        log(f"WARN: {what} has a plain-HTTP custom URL; "
+            "the credential proxy cannot intercept it")
+    elif urlsplit(url).port not in (None, 443):
+        raise InstallerError(f"{what} has a custom HTTPS port; "
+                             "the credential proxy supports port 443 only")
+
+
 def resolve_credentials(profiles, secrets_dir, proxy):
     """Return non-secret markers, after checking the proxy binding catalog.
 
@@ -1737,11 +1754,7 @@ def resolve_credentials(profiles, secrets_dir, proxy):
             type_file = base / "provider"
             configured = type_file.read_text(encoding="utf-8").strip() if type_file.is_file() else ""
             check_provider_type(p, configured)
-            if configured and configured not in binding["providers"]:
-                raise InstallerError(f"Secret '{p.credential_secret}' provider type is not allowed "
-                                     "by credentialProxy.secrets")
-            if not configured and len(binding["providers"]) != 1:
-                raise InstallerError(f"metadata Secret '{p.credential_secret}-meta' needs a provider type")
+            check_binding_provider(p, configured, binding)
             if p.model_secret_key:
                 p.model = read_secret_value(base, p.model_secret_key) or p.model
             if p.base_url_secret_key:
@@ -1753,12 +1766,7 @@ def resolve_credentials(profiles, secrets_dir, proxy):
                         raise InstallerError(f"provider '{p.name}' in workspace '{ws.name}': {exc} "
                                              f"(Secret '{p.credential_secret}' key "
                                              f"'{p.base_url_secret_key}')") from None
-                    if p.base_url.startswith("http://"):
-                        log(f"WARN: provider '{p.name}' has a plain-HTTP custom URL; "
-                            "the credential proxy cannot intercept it")
-                    elif urlsplit(p.base_url).port not in (None, 443):
-                        raise InstallerError(f"provider '{p.name}' has a custom HTTPS port; "
-                                             "the credential proxy supports port 443 only")
+                    check_proxy_endpoint(p.base_url, f"provider '{p.name}'")
             prefix = proxy["markerPrefix"]
             p.credential_values = {}
             for cname, entry in p.credentials_spec.items():
@@ -1772,6 +1780,7 @@ def resolve_credentials(profiles, secrets_dir, proxy):
                     raise InstallerError(f"Secret '{p.credential_secret}' credential key '{skey}' "
                                          "is present on a VM disk; provider keys belong only to "
                                          "the credential proxy")
+                check_binding_provider(p, configured, bindings[p.credential_secret, skey])
                 p.credential_values[cname] = f"{prefix}.{p.credential_secret}.{skey}"
             creds.setdefault(ws.name, {})[p.name] = (
                 f"{prefix}.{p.credential_secret}.{p.credential_secret_key}")
@@ -2023,6 +2032,18 @@ def resolve_sandbox_inference(ws, sb, secrets_dir):
             url = check_base_url(url)
         except ValueError as exc:
             raise InstallerError(f"{where}: inference baseUrl: {exc}") from None
+        if provider and not provider.credential_free:
+            check_proxy_endpoint(url, f"{where}: inference baseUrl")
+    if provider and not provider.credential_free:
+        installer = Path(__file__).resolve().parent
+        profile_type = "nvidia" if provider.type == "build" else provider.type
+        shipped = (profile_type in provider_profiles(installer) or
+                   (installer.parent / "provider-profiles" / f"{profile_type}.yaml").is_file())
+        if not shipped and secret_ref(spec.get("baseUrl")) != (provider.credential_secret, "url"):
+            raise InstallerError(f"{where}: keyed provider type '{provider.type}' has no shipped "
+                                 "proxy host profile; inference baseUrl must use secretKeyRef "
+                                 f"{{name: {provider.credential_secret}, key: url}} so the proxy "
+                                 "can bind the credential to the Secret's url host")
     out["baseUrl"] = url
     timeout = resolve_input(spec["timeoutSeconds"], secrets_dir,
                             f"{where}: inference timeoutSeconds") if "timeoutSeconds" in spec else ""
@@ -3282,8 +3303,8 @@ class ProfileApplier:
         self.gateway = cfg["mtlsGateway"]
         self.relay_gateway = cfg.get("relayGateway", "saw-relay")
         wiring = "|".join((cfg.get("credentialProxy") or {}).get(k, "") for k in ("url", "caFingerprint"))
-        wiring += "|" + (cfg.get("gatewayPki") or {}).get("caFingerprint", "")
         self.wiring_label = hashlib.sha256(wiring.encode()).hexdigest()[:16]
+        self.gateway_ca_label = (cfg.get("gatewayPki") or {}).get("caFingerprint", "")[:16]
         self.skipped = set()          # (workspace, provider) the gateway had no profile for
         self.desired = {}             # (kind, workspace, name) -> profile name that wants it
         self.profile_name = ""
@@ -3933,6 +3954,12 @@ class ProfileApplier:
 
     def sandbox_wiring_ok(self, ws, sb):
         """A running sandbox must have been created with the current proxy CA."""
+        return self.sandbox_label_matches(ws, sb, "saw.redhat.com/egress-wiring", self.wiring_label)
+
+    def sandbox_gateway_ca_ok(self, ws, sb):
+        return self.sandbox_label_matches(ws, sb, "saw.redhat.com/gateway-ca", self.gateway_ca_label)
+
+    def sandbox_label_matches(self, ws, sb, key, expected):
         result = self.cli("sandbox", "get", sb.name, *ws_args(ws.name), "-o", "json",
                           check=False, quiet=True)
         if result.ok:
@@ -3945,14 +3972,14 @@ class ProfileApplier:
                 labels = dict(item.split("=", 1) for item in labels
                               if isinstance(item, str) and "=" in item)
             if isinstance(labels, dict):
-                return labels.get("saw.redhat.com/egress-wiring") == self.wiring_label
+                return labels.get(key) == expected
         # Older CLI builds print labels in human output but reject -o json.
         human = self.cli("sandbox", "get", sb.name, *ws_args(ws.name), check=False, quiet=True)
         if not human.ok:
             return False
-        match = re.search(r"(?:^|\n)\s*saw\.redhat\.com/egress-wiring\s*[:=]\s*([0-9a-f]{16})\b",
+        match = re.search(rf"(?:^|\n)\s*{re.escape(key)}\s*[:=]\s*(\S+)",
                           human.out)
-        return bool(match and match.group(1) == self.wiring_label)
+        return bool(match and match.group(1).rstrip(",") == expected)
 
     def harness_mount_ok(self, ws, sb):
         """True when the sandbox mounts exactly its harness volume read-only,
@@ -4180,20 +4207,29 @@ class ProfileApplier:
             state = self.recover_migration(ws, sb, state, labels)
             if state == "running":
                 labels = self.sandbox_labels(ws, sb) if not self.sh.dry_run else labels
+        if state == "running" and not self.sh.dry_run and not self.sandbox_gateway_ca_ok(ws, sb):
+            # The old supervisor cannot authenticate to the rotated gateway,
+            # so it cannot serve a /sandbox archive for migration.
+            log(f"Sandbox '{sb.name}' has a stale or missing gateway CA; recreating it "
+                "(this wipes /sandbox)")
+            self.delete_sandbox_and_wait(ws, sb)
+            state = "missing"
         if state == "running" and labels is not None and key not in self.migrations:
             have = labels[0] or "none"             # created before the label: had no env
             if have != env_label(sb.env_values):
                 self.begin_migration(ws, sb, labels)
                 state = "missing"
-        if state == "running" and not self.sh.dry_run and (not self.sandbox_mounts_ok(ws, sb)
-                                                           or not self.sandbox_wiring_ok(ws, sb)):
+            elif not self.sandbox_wiring_ok(ws, sb):
+                self.begin_migration(ws, sb, labels, reason="different proxy wiring")
+                state = "missing"
+        if state == "running" and not self.sh.dry_run and not self.sandbox_mounts_ok(ws, sb):
             # Mounts are fixed at create: a sandbox created before its
             # harnessRef, one that still mounts a harness it no longer has,
             # or one that mounts another volume there is created again.
             # OpenShell 0.1.x deletes the per-sandbox /sandbox workspace
             # volume, including /sandbox/persist. Preserve needed files
             # separately before a recreation; the harness volume is distinct.
-            log(f"Sandbox '{sb.name}' has stale mounts or proxy wiring; recreating it "
+            log(f"Sandbox '{sb.name}' has stale trusted mounts; recreating it "
                 "(this wipes /sandbox)")
             self.delete_sandbox_and_wait(ws, sb)
             state = "missing"
@@ -4221,7 +4257,8 @@ class ProfileApplier:
         args = ["sandbox", "create", "--name", sb.name, "--label", MANAGED_LABEL,
                 "--label", f"{ENV_LABEL_KEY}={env_label(sb.env_values)}",
                 "--label", f"{INSTANCE_LABEL_KEY}={instance}",
-                "--label", f"saw.redhat.com/egress-wiring={self.wiring_label}"]
+                "--label", f"saw.redhat.com/egress-wiring={self.wiring_label}",
+                "--label", f"saw.redhat.com/gateway-ca={self.gateway_ca_label}"]
         if sb.image:
             args += ["--from", sb.image]
         args += ws_args(ws.name)
@@ -5063,13 +5100,13 @@ class ProfileApplier:
             except OSError:
                 pass
 
-    def begin_migration(self, ws, sb, labels):
+    def begin_migration(self, ws, sb, labels, reason="a different environment"):
         """Start recreating a running sandbox whose env differs from the
         profile's: archive and verify its /sandbox, persist the record (the
         original's identity, the replacement's instance token and the env
         it will be created with), then delete it. The record exists before
         anything is destroyed, so every later apply can finish the job."""
-        log(f"Sandbox '{sb.name}' was created with a different environment; recreating it "
+        log(f"Sandbox '{sb.name}' was created with {reason}; recreating it "
             "(its /sandbox files are carried over, open sessions end)")
         self.wait_exec_ready(ws, sb)
         record = self.preserve_sandbox(ws, sb)
