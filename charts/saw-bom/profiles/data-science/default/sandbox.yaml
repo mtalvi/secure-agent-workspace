@@ -23,7 +23,7 @@ spec:
       route: true
     env:
       PR123_TYPED_TEST:
-        value: before
+        value: after
   - name: cuda-sandbox
     type: nemoclaw
     enabled: false
