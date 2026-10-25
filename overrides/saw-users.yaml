@@ -1,3 +1,26 @@
-# Add real account names here after creating them with keycloak-add-users.
-# Each entry creates saw-<name>. Demo entries are in saw-users-demo.yaml.
-users: []
+defaults:
+  openshellSaw:
+    networkPolicy:
+      clusterNetworkCIDRs:
+      - 10.232.0.0/14
+      serviceNetworkCIDRs:
+      - 172.231.0.0/16
+      enabled: true
+    cleanupApi:
+      serviceIP: 172.231.0.1
+      endpoints:
+      - ip: 10.10.10.10
+        port: 6443
+      - ip: 10.10.10.11
+        port: 6443
+      - ip: 10.10.10.12
+        port: 6443
+    credentialProxy:
+      image: image-registry.openshift-image-registry.svc:5000/saw-images/saw-credential-proxy@sha256:2eceb802f684ac21843f3f2c4ed2186b8f659f050245f27fc44c5762d95c5d47
+users:
+- name: alice
+  webSearch:
+    enabled: false
+- name: bob
+  webSearch:
+    enabled: false
