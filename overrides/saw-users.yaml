@@ -1,7 +1,22 @@
-# TEST ONLY: cluster-gxpdb upgrade validation; never merge.
 users:
 - name: alice
 - name: bob
+  profiles:
+  - custom-inference
+  vaultPrefix: hub/saw-bob
+  values:
+    networkPolicy:
+      extraEgress:
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshell-agents
+          podSelector:
+            matchLabels:
+              app: pr123-keyless-inference
+        ports:
+        - protocol: TCP
+          port: 8000
 defaults:
   openshellSaw:
     networkPolicy:
