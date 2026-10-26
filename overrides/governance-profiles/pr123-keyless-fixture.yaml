@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pr123-keyless-inference
+data:
+  server.py: "\"\"\"Deterministic, keyless OpenAI-compatible fixture; never log credentials.\"\
+    \"\"\nimport json\nimport time\nfrom http.server import BaseHTTPRequestHandler,\
+    \ ThreadingHTTPServer\n\n\nclass Handler(BaseHTTPRequestHandler):\n    protocol_version\
+    \ = 'HTTP/1.1'\n\n    def log_message(self, *args):\n        pass\n\n    def reply(self,\
+    \ status, data):\n        body = json.dumps(data).encode()\n        self.send_response(status)\n\
+    \        self.send_header('Content-Type', 'application/json')\n        self.send_header('Content-Length',\
+    \ str(len(body)))\n        self.end_headers()\n        self.wfile.write(body)\n\
+    \n    def do_GET(self):\n        if self.path == '/healthz':\n            self.reply(200,\
+    \ {'ok': True})\n        else:\n            self.reply(200, {'object': 'list',\
+    \ 'data': [\n                {'id': 'pr123-keyless-model', 'object': 'model',\
+    \ 'owned_by': 'pr123-fixture'}]})\n\n    def do_POST(self):\n        length =\
+    \ int(self.headers.get('Content-Length', '0'))\n        if length > 2 * 1024 *\
+    \ 1024:\n            self.reply(413, {'error': {'message': 'fixture request too\
+    \ large'}})\n            return\n        request = json.loads(self.rfile.read(length))\n\
+    \        auth = self.headers.get('Authorization', '')\n        if auth and not\
+    \ auth.startswith('Bearer saw-cred.'):\n            self.reply(400, {'error':\
+    \ {'message': 'fixture expected a marker or no credential'}})\n            return\n\
+    \        print('PASS keyless HTTP request received without a real credential',\
+    \ flush=True)\n        common = {'id': 'chatcmpl-pr123', 'created': int(time.time()),\n\
+    \                  'model': request.get('model', 'pr123-keyless-model')}\n   \
+    \     text = 'PR123_KEYLESS_HTTP_OK'\n        if request.get('stream'):\n    \
+    \        self.send_response(200)\n            self.send_header('Content-Type',\
+    \ 'text/event-stream')\n            self.send_header('Connection', 'close')\n\
+    \            self.end_headers()\n            for delta, finish in [({'role': 'assistant',\
+    \ 'content': text}, None), ({}, 'stop')]:\n                chunk = {**common,\
+    \ 'object': 'chat.completion.chunk',\n                         'choices': [{'index':\
+    \ 0, 'delta': delta, 'finish_reason': finish}]}\n                self.wfile.write(('data:\
+    \ ' + json.dumps(chunk) + '\\n\\n').encode())\n            self.wfile.write(b'data:\
+    \ [DONE]\\n\\n')\n            self.wfile.flush()\n            self.close_connection\
+    \ = True\n        else:\n            self.reply(200, {**common, 'object': 'chat.completion',\
+    \ 'choices': [\n                {'index': 0, 'message': {'role': 'assistant',\
+    \ 'content': text}, 'finish_reason': 'stop'}],\n                'usage': {'prompt_tokens':\
+    \ 1, 'completion_tokens': 1, 'total_tokens': 2}})\n\n\nThreadingHTTPServer(('0.0.0.0',\
+    \ 8000), Handler).serve_forever()\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pr123-keyless-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pr123-keyless-inference
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: server
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        command:
+        - python3
+        - -u
+        - /app/server.py
+        env:
+        - name: PYTHONDONTWRITEBYTECODE
+          value: '1'
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 20m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+        volumeMounts:
+        - name: script
+          mountPath: /app
+          readOnly: true
+      volumes:
+      - name: script
+        configMap:
+          name: pr123-keyless-inference
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pr123-keyless-inference
+spec:
+  selector:
+    app: pr123-keyless-inference
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pr123-keyless-inference
+spec:
+  podSelector:
+    matchLabels:
+      app: pr123-keyless-inference
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: saw-bob
+    ports:
+    - protocol: TCP
+      port: 8000
