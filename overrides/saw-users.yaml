@@ -1,3 +1,23 @@
-# Add real account names here after creating them with keycloak-add-users.
-# Each entry creates saw-<name>. Demo entries are in saw-users-demo.yaml.
-users: []
+# TEST ONLY: cluster-gxpdb upgrade validation; never merge.
+users:
+- name: alice
+- name: bob
+defaults:
+  openshellSaw:
+    networkPolicy:
+      enabled: true
+      clusterNetworkCIDRs:
+      - 10.232.0.0/14
+      serviceNetworkCIDRs:
+      - 172.231.0.0/16
+    cleanupApi:
+      serviceIP: 172.231.0.1
+      endpoints:
+      - ip: 10.10.10.10
+        port: 6443
+      - ip: 10.10.10.11
+        port: 6443
+      - ip: 10.10.10.12
+        port: 6443
+    credentialProxy:
+      image: image-registry.openshift-image-registry.svc:5000/saw-images/saw-credential-proxy@sha256:eb3ca7f11fa39fbd061693206f0bb081d6c44d554b839e23672189a4606f4e9f
