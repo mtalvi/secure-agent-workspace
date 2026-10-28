@@ -49,9 +49,11 @@ When the user asks to set up (or turn on) the daily briefing:
    then use `exec` to run this single command:
 
    ```sh
-   openclaw cron add --name daily-briefing --every 5m --session isolated --message 'Update my daily briefing with the daily-briefing skill (update mode). Reply with one line.'
+   openclaw cron add --name daily-briefing --every 5m --session isolated --message 'Update my daily briefing with the daily-briefing skill (update mode). Reply with one line.' --no-deliver
    ```
 
+   Keep `--no-deliver`: the schedule updates the local briefing without a chat
+   delivery channel. Do not enable Slack or email delivery for this job.
    If approval is denied or times out, report that the schedule was not created.
 4. Run `openclaw cron list --json` again to confirm the result.
 5. Run one update right away and show the briefing.

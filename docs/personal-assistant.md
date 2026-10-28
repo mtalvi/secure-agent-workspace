@@ -29,7 +29,9 @@ of refresh material. Updating the Vault material through ESO drops the cache.
 Once installation reports `apply: Done`, ask **Set up my daily briefing.**
 The agent checks for an existing job, asks approval for `openclaw cron add`,
 then schedules one isolated run every five minutes and updates the briefing
-immediately. A second setup request keeps the existing job. Scheduled updates
+immediately. The command includes `--no-deliver`: updates are saved locally,
+without requiring a chat delivery channel. A second setup request keeps the
+existing job. Scheduled updates
 need no approval; stopping the schedule requires approval. The local
 `save_briefing` tool writes only today's briefing. Slack posts, sending email,
 and generic writes remain subject to the default-deny tool policy.
