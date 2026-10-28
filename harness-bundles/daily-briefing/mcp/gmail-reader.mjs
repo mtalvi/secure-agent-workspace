@@ -1,7 +1,7 @@
 // MCP server (stdio): new Gmail messages for the daily briefing, read-only.
 // GMAIL_ACCESS_TOKEN holds an OpenShell placeholder; the `gmail` provider
-// profile lets the sandbox proxy put the real, gateway-refreshed token in
-// for gmail.googleapis.com only.
+// profile lets the namespace credential proxy mint and inject the real token
+// for gmail.googleapis.com only. Refresh material never reaches this process.
 import { appendItems, clip, getJson, loadState, saveState, serve, today } from "./briefing-lib.mjs";
 
 const API = process.env.GMAIL_API_URL || "https://gmail.googleapis.com/gmail/v1/users/me";
