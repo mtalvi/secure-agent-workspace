@@ -33,6 +33,8 @@ immediately. A second setup request keeps the existing job. Scheduled updates
 need no approval; stopping the schedule requires approval. The local
 `save_briefing` tool writes only today's briefing. Slack posts, sending email,
 and generic writes remain subject to the default-deny tool policy.
+Each update rebuilds from today's saved messages, even when the readers report
+zero new messages, so a summary interrupted after collection can recover.
 
 Verify that the proxy Deployment is Ready, `gmail-meta` and `slack-meta` hold
 only `provider`, and `make test-credential-isolation` passes. After the first

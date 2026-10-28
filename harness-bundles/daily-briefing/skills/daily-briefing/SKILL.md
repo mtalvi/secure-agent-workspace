@@ -18,9 +18,11 @@ credentials.
 ## Update the briefing
 
 1. Call `slack-reader__new_messages` and `gmail-reader__new_messages`.
-2. If both report `new: 0` and today's `briefing.md` exists, stop and reply
-   `Briefing up to date`.
-3. Otherwise read today's whole `items.jsonl` and compose the briefing:
+2. Read today's whole `items.jsonl`, even when both tools return `new: 0`.
+   An earlier update may have collected messages and then failed before saving
+   the briefing. Always rebuild from the saved items; the new-message counts
+   do not tell you whether the existing briefing includes them.
+3. Compose the briefing:
    - `# Daily briefing — <date>` and `_Updated <time>_`
    - `## Needs attention`: direct asks, questions to the user, deadlines,
      unread email from people (not newsletters). At most 7 bullets.
