@@ -120,6 +120,21 @@ def test_gitops_updates_legacy_firewall_before_bootstrapping_the_ca():
 
 @pytest.mark.ci_external
 @pytest.mark.skipif(not HELM, reason="helm is not installed")
+def test_gitops_grants_registry_pull_before_bootstrapping_the_ca():
+    docs = render(SAW, "-f", str(ROOT / "tests/fixtures/saw-network-topology.yaml"),
+                  "-f", str(ROOT / "tests/fixtures/credential-proxy-values.yaml"))
+    pull_binding = next(d for d in docs if d["kind"] == "RoleBinding"
+                        and d["roleRef"]["name"] == "system:image-puller")
+    assert pull_binding["subjects"] == [{"apiGroup": "rbac.authorization.k8s.io",
+                                        "kind": "Group",
+                                        "name": "system:serviceaccounts:saw-test"}]
+    pull_wave = int(pull_binding["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"])
+    hook = next(d for d in docs if d["kind"] == "Pod"
+                and d["metadata"]["name"] == "saw-credential-proxy-ca-hook")
+    assert pull_wave < int(hook["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"])
+
+
+@pytest.mark.skipif(not HELM, reason="helm is not installed")
 def test_public_issuer_ca_stays_in_the_guest_mount_list():
     docs = render(SAW, "-f", str(ROOT / "tests/fixtures/saw-network-topology.yaml"),
                   "-f", str(ROOT / "tests/fixtures/credential-proxy-values.yaml"),
