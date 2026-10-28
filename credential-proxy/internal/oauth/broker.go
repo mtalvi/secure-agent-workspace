@@ -109,9 +109,10 @@ func (b *Broker) Token(ctx context.Context, id string, spec Refresh, dir string)
 		"client_secret": {values[1]}, "refresh_token": {refreshToken}}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	binding := strings.SplitN(id, "/", 2)[0]
 	fail := func(code string) (string, error) {
 		e.token, e.failure, e.retry = "", code, now.Add(60*time.Second)
-		log.Printf("event=oauth-refresh binding=%s status=failed error=%s", id, code)
+		log.Printf("event=oauth-refresh binding=%s status=failed error=%s", binding, code)
 		return "", errors.New(code)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, spec.TokenURL, strings.NewReader(form.Encode()))
@@ -161,6 +162,6 @@ func (b *Broker) Token(ctx context.Context, id string, spec Refresh, dir string)
 	if rotated {
 		e.rotated = body.RefreshToken
 	}
-	log.Printf("event=oauth-refresh binding=%s status=ok expires_in=%d rotated=%t", id, lifetime, rotated)
+	log.Printf("event=oauth-refresh binding=%s status=ok expires_in=%d rotated=%t", binding, lifetime, rotated)
 	return e.token, nil
 }

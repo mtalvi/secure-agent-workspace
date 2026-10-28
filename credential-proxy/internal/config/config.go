@@ -229,7 +229,7 @@ func (s *Store) Snapshot() (Policy, []Resolved, error) {
 			if s.Broker == nil {
 				return p, nil, errors.New("refresh broker unavailable")
 			}
-			spec, id := *b.Refresh, b.Secret
+			spec, id := *b.Refresh, b.Secret+"/"+b.Key
 			token = func(ctx context.Context) (string, error) { return s.Broker.Token(ctx, id, spec, base) }
 		}
 		resolved = append(resolved, Resolved{Token: token,

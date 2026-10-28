@@ -318,6 +318,8 @@ func TestGmailRefreshAndFailureIsolation(t *testing.T) {
 	}
 	spec := &config.Refresh{Strategy: "oauth2_refresh_token", TokenURL: "https://oauth2.googleapis.com/token", RefreshBeforeSeconds: 300, MaxLifetimeSeconds: 3600, Material: oauth.Material{ClientID: "client_id", ClientSecret: "client_secret", RefreshToken: "refresh_token"}}
 	policy := config.Policy{MarkerPrefix: "saw-cred", AllowHosts: []string{"gmail.googleapis.com", "oauth2.googleapis.com", "api.example.test"}, Profiles: map[string][]string{"gmail": {"gmail.googleapis.com"}, "nvidia": {"gmail.googleapis.com", "api.example.test"}}, Bindings: []config.Binding{{Secret: "gmail", Key: "access_token", Providers: []string{"gmail"}, Refresh: spec}, {Secret: "inference", Key: "api_key", Providers: []string{"nvidia"}}}}
+	policy.Bindings = append(policy.Bindings, config.Binding{Secret: "gmail", Key: "secondary_token",
+		Providers: []string{"gmail"}, Refresh: spec})
 	raw, _ := json.Marshal(policy)
 	if err := os.WriteFile(f.policyPath, raw, 0600); err != nil {
 		t.Fatal(err)
@@ -360,6 +362,12 @@ func TestGmailRefreshAndFailureIsolation(t *testing.T) {
 	if posts.Load() != 1 {
 		t.Fatal("unbound host triggered refresh")
 	}
+	// Distinct binding keys in one Secret have independent token caches.
+	request("gmail.googleapis.com", "saw-cred.gmail.secondary_token", 200, "")
+	request("gmail.googleapis.com", "saw-cred.gmail.access_token", 200, "")
+	if posts.Load() != 2 {
+		t.Fatal("refresh bindings shared or invalidated each other's cache")
+	}
 	fail.Store(true)
 	if err := os.WriteFile(filepath.Join(gmail, "refresh_token"), []byte("wrong-refresh-material"), 0600); err != nil {
 		t.Fatal(err)
@@ -367,7 +375,7 @@ func TestGmailRefreshAndFailureIsolation(t *testing.T) {
 	request("gmail.googleapis.com", "saw-cred.gmail.access_token", 502, "credential refresh failed")
 	request("gmail.googleapis.com", "saw-cred.inference.api_key", 200, "")
 	health()
-	if posts.Load() != 2 {
+	if posts.Load() != 3 {
 		t.Fatal("static request or health triggered OAuth")
 	}
 }
