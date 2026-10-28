@@ -14,7 +14,7 @@ spec:
   # profile that governs it. The installer refuses the bundle unless the
   # gateway serves that profile and the sandbox has a provider of its type
   # (slack, gmail). The server reads the profile's env var, a placeholder:
-  # the sandbox's egress proxy swaps in the real, gateway-refreshed token,
+  # the sandbox's egress proxy swaps in the real credential from the namespace proxy,
   # only for the profile's (read-only) endpoints. No key is in the bundle.
   plugins: []
   mcpServers:
@@ -22,3 +22,4 @@ spec:
       governanceProfile: slack
     - name: gmail-reader
       governanceProfile: gmail
+    - name: briefing-writer

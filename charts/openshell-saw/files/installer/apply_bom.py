@@ -668,6 +668,7 @@ class Provider:
     # `--credential ENV` with the env var that credential declares. The
     # single-credential shorthand credentialSecretKey is one entry for the
     # profile's first credential.
+    proxy_refresh: str = ""
     credentials_spec: dict = field(default_factory=dict)
     credential_values: dict = field(default_factory=dict)   # credential name -> value
 
@@ -1433,6 +1434,7 @@ def parse_profiles(files):
                         base_url_secret_key=p.get("baseUrlSecretKey", ""),
                         model_secret_key=p.get("modelSecretKey", ""),
                         inference_timeout=int(p.get("inferenceTimeout", 0) or 0),
+                        proxy_refresh=str((p.get("refresh") or {}).get("strategy", "")),
                         credentials_spec=cred_spec if cred_spec is not None else {}))
             if "sandbox.yaml" in docs:
                 key, text = docs["sandbox.yaml"]
@@ -1645,6 +1647,8 @@ def validate_profiles(profiles, known_profiles=(), governed=False):
                               f"(supported: {', '.join(sorted(BASE_URL_CONFIG_KEYS))})")
             if p.inference_timeout < 0:
                 errors.append(f"{where}: provider '{p.name}' has a negative inferenceTimeout")
+            if p.proxy_refresh and p.proxy_refresh != "oauth2_refresh_token":
+                errors.append(f"{where}: provider '{p.name}' has unsupported refresh strategy '{p.proxy_refresh}'")
             if p.credentials_spec:
                 if not isinstance(p.credentials_spec, dict):
                     errors.append(f"{where}: provider '{p.name}' credentials must be a mapping of "
@@ -1766,6 +1770,12 @@ def resolve_credentials(profiles, secrets_dir, proxy):
                     f"provider '{p.name}' in workspace '{ws.name}' uses Secret "
                     f"'{p.credential_secret}' key '{p.credential_secret_key}', but credentialProxy.secrets "
                     "has no binding; add it before applying")
+            if bool(binding.get("refresh")) != bool(p.proxy_refresh):
+                raise InstallerError(f"provider '{p.name}' refresh binding does not match proxy refresh strategy")
+            for material in ("client_id", "client_secret", "refresh_token"):
+                file = base / material
+                if file.exists() or file.is_symlink():
+                    raise InstallerError(f"Secret '{p.credential_secret}' refresh material '{material}' is present on a VM disk")
             if key_file.exists() or key_file.is_symlink():
                 raise InstallerError(f"Secret '{p.credential_secret}' credential key "
                                      f"'{p.credential_secret_key}' is present on a VM disk; "

@@ -49,7 +49,10 @@ def proxy_for(ab, profiles):
                 types = {p.type, ab.nemoclaw_provider(p)} - {""}
                 for key in keys:
                     seen.setdefault((p.credential_secret, key), set()).update(types)
-    return {**TEST_PROXY, "secrets": [{"name": s, "key": k, "providers": sorted(t)}
+    return {**TEST_PROXY, "secrets": [{"name": s, "key": k, "providers": sorted(t),
+                                        **({"refresh": True} if any(p.proxy_refresh and p.credential_secret == s and
+                                            p.credential_secret_key == k for profile in profiles
+                                            for ws in profile.workspaces for p in ws.providers) else {})}
                                       for (s, k), t in sorted(seen.items())]}
 
 

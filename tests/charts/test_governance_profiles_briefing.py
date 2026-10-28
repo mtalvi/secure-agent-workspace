@@ -11,7 +11,7 @@ PROFILES = ROOT / "charts" / "governance-policy" / "profiles"
 @pytest.mark.parametrize("name, token_url, env", [
     ("slack", "https://slack.com/api/oauth.v2.access", "SLACK_BOT_TOKEN"),
     ("gmail", "https://oauth2.googleapis.com/token", "GMAIL_ACCESS_TOKEN")])
-def test_the_gateway_can_refresh_the_token(name, token_url, env):
+def test_the_profile_declares_the_refresh_contract(name, token_url, env):
     doc = yaml.safe_load((PROFILES / f"{name}.yaml").read_text())
     [cred] = doc["credentials"]
     assert env in cred["env_vars"] and cred["auth_style"] == "bearer"
@@ -29,27 +29,6 @@ def test_read_only_and_reachable_from_node(name):
     methods = {r["allow"]["method"] for e in doc["endpoints"] for r in e["rules"]}
     assert methods == {"GET"}
     assert {"/usr/bin/node-*", "/usr/local/bin/node"} <= set(doc["binaries"])
-
-
-def _installer():
-    import importlib.util
-    path = ROOT / "charts" / "openshell-saw" / "files" / "installer" / "apply_bom.py"
-    spec = importlib.util.spec_from_file_location("apply_bom_for_profiles", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-@pytest.mark.parametrize("name", ["slack", "gmail"])
-def test_installer_requires_what_the_profile_requires(name):
-    # The gateway refuses `provider refresh configure` without the material
-    # the profile marks required; the installer must not send less.
-    doc = yaml.safe_load((PROFILES / f"{name}.yaml").read_text())
-    [cred] = doc["credentials"]
-    profile = {m["name"]: bool(m.get("required")) for m in cred["refresh"]["material"]}
-    installer = _installer().REFRESH_MATERIAL["oauth2-refresh-token"]
-    assert set(profile) == set(installer)
-    assert {k for k, r in profile.items() if r} == {k for k, r in installer.items() if r}
 
 
 @pytest.mark.parametrize("name, paths", [

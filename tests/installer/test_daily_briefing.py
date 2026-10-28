@@ -1,6 +1,4 @@
-"""The personal-assistant profile: Slack and Gmail providers whose access tokens
-the gateway refreshes, and the daily-briefing harness bundle on the NemoClaw
-sandbox."""
+"""Personal-assistant: metadata-only credentials and a NemoClaw harness."""
 import json
 import shutil
 import subprocess
@@ -9,10 +7,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from conftest import ROOT, harness_files, profile_files
+from conftest import ROOT, harness_files, profile_files, proxy_for, resolve
 
 BUNDLE = ROOT / "harness-bundles" / "daily-briefing"
-REFRESH = {"client_id": "app-123.apps", "client_secret": "s3cr3t-CLIENT", "refresh_token": "1//r3fr3sh-TOKEN"}
 
 
 @pytest.fixture
@@ -20,8 +17,6 @@ def briefing_secrets(secrets_dir):
     for secret in ("slack", "gmail"):
         (secrets_dir / secret).mkdir()
         (secrets_dir / secret / "provider").write_text(secret)
-        for key, value in REFRESH.items():
-            (secrets_dir / secret / key).write_text(f"{secret}-{value}\n")
     return secrets_dir
 
 
@@ -38,8 +33,11 @@ def catalog(fake_env):
 
 
 def applier(ab, config, creds, **extra):
-    return ab.ProfileApplier(ab.Shell(), {**config, "allowDriverConfig": True, **extra}, creds,
-                             harness={"bundles": ab.parse_harness_files(harness_files(("daily-briefing",)))})
+    return ab.ProfileApplier(ab.Shell(), {**config, "allowDriverConfig": True,
+                             "credentialProxy": proxy_for(ab, ab.parse_profiles(profile_files("personal-assistant"))), **extra}, creds,
+                             harness={"bundles": ab.parse_harness_files(harness_files(("daily-briefing",)))},
+                             provider_profile_docs={p.stem: p.read_text() for p in
+                                                (ROOT / "charts/governance-policy/profiles").glob("*.yaml")})
 
 
 def calls(fake_env, *prefix):
@@ -48,92 +46,6 @@ def calls(fake_env, *prefix):
 
 # -- providers and refresh -----------------------------------------------------------
 
-def test_refresh_material_reaches_the_gateway_through_the_environment(
-        ab, fake_env, config, briefing, briefing_secrets, catalog, tmp_path):
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
-    ledger = tmp_path / "user" / "managed.json"
-    applier(ab, config, creds, prune={"ledgerPath": str(ledger)}).apply(briefing)
-    state = fake_env.openshell_state()
-    for name, key in (("slack", "SLACK_BOT_TOKEN"), ("gmail", "GMAIL_ACCESS_TOKEN")):
-        provider = state["providers"][f"personal-assistant/{name}"]
-        assert provider["refresh"][key] == {
-            "strategy": "oauth2-refresh-token",
-            "material": {k: f"{name}-{v}" for k, v in REFRESH.items()}}
-        assert provider["credential"].startswith(f"{key}=minted-"), "rotated right away"
-    argv = json.dumps(fake_env.openshell_calls())
-    for value in REFRESH.values():
-        assert value not in argv, "refresh material never goes through argv"
-    assert len(calls(fake_env, "provider", "refresh", "configure")) == 2
-    assert json.loads((tmp_path / "user" / "refresh.json").read_text()).keys() == {
-        "personal-assistant/slack", "personal-assistant/gmail"}
-
-
-def test_unchanged_material_is_not_sent_again(ab, fake_env, config, briefing, briefing_secrets,
-                                              catalog, tmp_path):
-    """The gateway keeps a rotated refresh token (Slack rotates them); sending
-    the Secret's original again would undo that. Nor is the minted token
-    replaced by the bootstrap credential."""
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
-    prune = {"ledgerPath": str(tmp_path / "user" / "managed.json")}
-    applier(ab, config, creds, prune=prune).apply(briefing)
-    minted = fake_env.openshell_state()["providers"]["personal-assistant/gmail"]["credential"]
-    applier(ab, config, creds, prune=prune).apply(briefing)
-    assert len(calls(fake_env, "provider", "refresh", "configure")) == 2
-    assert fake_env.openshell_state()["providers"]["personal-assistant/gmail"]["credential"] == minted
-    assert not [c for c in calls(fake_env, "provider", "update") if c[2] in ("slack", "gmail")]
-    # New material in the Secret: configured again.
-    (briefing_secrets / "gmail" / "refresh_token").write_text("1//new-refresh\n")
-    briefing = ab.parse_profiles(profile_files("personal-assistant"))
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
-    applier(ab, config, creds, prune=prune).apply(briefing)
-    configured = calls(fake_env, "provider", "refresh", "configure")
-    assert len(configured) == 3 and configured[-1][3] == "gmail"
-
-
-def test_a_token_without_refresh_material_is_used_as_is(ab, briefing, briefing_secrets):
-    for key in REFRESH:
-        (briefing_secrets / "slack" / key).unlink()
-    (briefing_secrets / "slack" / "bot_token").write_text("xoxb-STATIC\n")
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
-    pa = next(ws for ws in briefing[0].workspaces if ws.name == "personal-assistant")
-    slack = next(p for p in pa.providers if p.name == "slack")
-    assert creds["personal-assistant"]["slack"] == "xoxb-STATIC" and slack.refresh_strategy == ""
-    gmail = next(p for p in pa.providers if p.name == "gmail")
-    assert gmail.refresh_strategy == "oauth2-refresh-token"
-    assert creds["personal-assistant"]["gmail"] == ab.REFRESH_BOOTSTRAP_CREDENTIAL
-
-
-def test_material_without_the_client_secret_is_not_refreshed(ab, briefing, briefing_secrets):
-    # The profiles require client_secret, so the gateway would refuse the
-    # refresh: with a token the provider is static, without one it is refused.
-    (briefing_secrets / "slack" / "client_secret").unlink()
-    (briefing_secrets / "slack" / "bot_token").write_text("xoxb-STATIC\n")
-    (briefing_secrets / "gmail" / "client_secret").unlink()
-    with pytest.raises(ab.InstallerError, match="'gmail' needs refresh material"):
-        ab.resolve_credentials(briefing, briefing_secrets)
-    (briefing_secrets / "gmail" / "access_token").write_text("ya29.STATIC\n")
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
-    pa = next(ws for ws in briefing[0].workspaces if ws.name == "personal-assistant")
-    assert {p.name: p.refresh_strategy for p in pa.providers if p.name != "nvidia"} == {
-        "slack": "", "gmail": ""}
-    assert creds["personal-assistant"]["slack"] == "xoxb-STATIC" and creds["personal-assistant"]["gmail"] == "ya29.STATIC"
-
-
-def test_neither_material_nor_token_is_refused(ab, briefing, briefing_secrets):
-    for key in REFRESH:
-        (briefing_secrets / "gmail" / key).unlink()
-    with pytest.raises(ab.InstallerError, match="'gmail' needs refresh material"):
-        ab.resolve_credentials(briefing, briefing_secrets)
-
-
-def test_an_unknown_refresh_strategy_is_refused(ab):
-    files = profile_files("personal-assistant")
-    key = next(k for k in files if k.endswith("personal-assistant__providers.yaml"))
-    files[key] = files[key].replace("strategy: oauth2-refresh-token", "strategy: magic", 1)
-    with pytest.raises(ab.InstallerError, match="unsupported refresh strategy 'magic'"):
-        ab.validate_profiles(ab.parse_profiles(files))
-
-
 # -- the bundle on the NemoClaw sandbox ---------------------------------------------
 
 def test_the_nemoclaw_sandbox_is_created_with_the_bundle_mounted(
@@ -141,7 +53,7 @@ def test_the_nemoclaw_sandbox_is_created_with_the_bundle_mounted(
     """`nemoclaw onboard` cannot add the mount on podman, so the installer
     creates the sandbox itself, with the harness volume, and configures
     OpenClaw (the MCP servers come from the bundle's mcp.json)."""
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
+    creds = resolve(ab, briefing, briefing_secrets)
     applier(ab, config, creds).apply(briefing)
     assert not [c for c in fake_env.other_calls("nemoclaw") if c["args"][:1] == ["onboard"]]
     sb = fake_env.openshell_state()["sandboxes"]["personal-assistant/assistant"]
@@ -160,7 +72,7 @@ def test_the_bundle_is_enabled_with_capability_consent(
     """Found live on OpenClaw 2026.9.2: a bundle on plugins.load.paths stays
     disabled ("not in allowlist") until `plugins enable` adds it to NemoClaw's
     restrictive plugins.allow; older releases may not know the flag."""
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
+    creds = resolve(ab, briefing, briefing_secrets)
     applier(ab, config, creds).apply(briefing)
     scripts = "\n".join(c[-1] for c in calls(fake_env, "sandbox", "exec") if c[3] == "assistant")
     assert "openclaw plugins enable daily-briefing --accept-capabilities || " in scripts
@@ -172,7 +84,7 @@ def test_the_readers_are_declared_where_openclaw_expands_their_placeholders(
     """Found live: from the bundle's mcp.json the Slack reader got the literal
     text ${SLACK_BOT_TOKEN} (Slack: invalid_auth). Re-declared in
     openclaw.json, OpenClaw puts the provider's placeholder in."""
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
+    creds = resolve(ab, briefing, briefing_secrets)
     applier(ab, config, creds).apply(briefing)
     cfg = fake_env.openshell_state()["sandboxes"]["personal-assistant/assistant"]["openclawConfig"]
     slack, gmail = cfg["mcp.servers.slack-reader"], cfg["mcp.servers.gmail-reader"]
@@ -188,7 +100,7 @@ def test_openclaws_own_slack_channel_stays_off(
     slack channel as configured, tries to install @openclaw/slack from npm at
     startup (egress denied) and does not start. The provider is for the
     harness's governed reads, not for an OpenClaw chat channel."""
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
+    creds = resolve(ab, briefing, briefing_secrets)
     applier(ab, config, creds).apply(briefing)
     execs = [c[-1] for c in calls(fake_env, "sandbox", "exec") if c[3] == "assistant"]
     scripts = "\n".join(execs)
@@ -202,7 +114,7 @@ def test_openclaws_own_slack_channel_stays_off(
 def test_the_bundle_needs_the_slack_and_gmail_profiles(ab, fake_env, config, briefing,
                                                         briefing_secrets, catalog):
     (fake_env.state / "catalog.json").write_text(json.dumps({"nvidia": ["integrate.api.nvidia.com"]}))
-    creds = ab.resolve_credentials(briefing, briefing_secrets)
+    creds = resolve(ab, briefing, briefing_secrets)
     with pytest.raises(ab.InstallerError):
         applier(ab, config, creds).apply(briefing)
     assert "personal-assistant/assistant" not in (fake_env.openshell_state() or {}).get("sandboxes", {})
@@ -231,8 +143,8 @@ def test_the_bundle_is_valid_and_the_chart_copy_matches():
                 if p.is_file() and not p.name.startswith(".")}
     assert tree(BUNDLE) == tree(ROOT / "charts" / "saw-bom" / "harness" / "daily-briefing")
     doc = yaml.safe_load((BUNDLE / "harness.yaml").read_text())
-    assert {s["name"]: s["governanceProfile"] for s in doc["spec"]["mcpServers"]} == {
-        "slack-reader": "slack", "gmail-reader": "gmail"}
+    assert {s["name"]: s.get("governanceProfile") for s in doc["spec"]["mcpServers"]} == {
+        "slack-reader": "slack", "gmail-reader": "gmail", "briefing-writer": None}
     servers = json.loads((BUNDLE / "mcp.json").read_text())["mcpServers"]
     # The provider's placeholder, and the proxy CA (OpenClaw passes neither on).
     ca = {"NODE_EXTRA_CA_CERTS": "${NODE_EXTRA_CA_CERTS}"}
@@ -276,11 +188,11 @@ const tls = process.env.FAKE_TLS_DIR;
 '''
 
 
-def mcp_call(server, env, tool):
+def mcp_call(server, env, tool, arguments=None):
     msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": tool, "arguments": {}}}]
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": tool, "arguments": arguments or {}}}]
     proc = subprocess.Popen(["node", str(BUNDLE / "mcp" / server)], stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, text=True, env=env)
     for m in msgs:
@@ -359,3 +271,48 @@ def test_the_readers_trust_the_proxy_ca_themselves(tmp_path):
         assert json.loads(trusted["content"][0]["text"])["new"] == 1
     finally:
         api.kill()
+
+
+def test_briefing_credentials_are_proxy_markers(ab, briefing, briefing_secrets):
+    creds = resolve(ab, briefing, briefing_secrets)
+    assert creds['personal-assistant']['gmail'] == 'saw-cred.gmail.access_token'
+    assert creds['personal-assistant']['slack'] == 'saw-cred.slack.bot_token'
+
+
+@pytest.mark.parametrize('key', ['client_id', 'client_secret', 'refresh_token'])
+def test_refresh_material_on_the_vm_disk_is_refused(ab, briefing, briefing_secrets, key):
+    (briefing_secrets / 'gmail' / key).write_text('must-stay-outside-the-vm')
+    with pytest.raises(ab.InstallerError, match='refresh material.*present on a VM disk'):
+        resolve(ab, briefing, briefing_secrets)
+
+
+@pytest.mark.parametrize('provider', ['gmail', 'slack'])
+def test_a_refresh_provider_needs_a_refresh_binding(ab, briefing, briefing_secrets, provider):
+    proxy = proxy_for(ab, briefing)
+    binding = next(b for b in proxy['secrets'] if b['name'] == provider)
+    binding['refresh'] = not binding.get('refresh', False)
+    with pytest.raises(ab.InstallerError, match='refresh binding does not match'):
+        ab.resolve_credentials(briefing, briefing_secrets, proxy)
+
+
+def test_a_static_slack_token_needs_no_refresh(ab, briefing, briefing_secrets):
+    proxy = proxy_for(ab, briefing)
+    slack = next(b for b in proxy['secrets'] if b['name'] == 'slack')
+    assert not slack.get('refresh')
+    assert ab.resolve_credentials(briefing, briefing_secrets, proxy)['personal-assistant']['slack'] == 'saw-cred.slack.bot_token'
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+def test_briefing_writer_saves_only_today_atomically(tmp_path):
+    import os
+    env = {**os.environ, "BRIEFING_DIR": str(tmp_path / "briefing")}
+    result = mcp_call("briefing-writer.mjs", env, "save_briefing", {"markdown":"# My briefing\n"})
+    assert [t["name"] for t in result[2]["result"]["tools"]] == ["save_briefing"]
+    file = Path(json.loads(result[3]["result"]["content"][0]["text"])["file"])
+    assert file.name == "briefing.md" and file.parent.parent == tmp_path / "briefing"
+    assert file.read_text() == "# My briefing\n"
+    assert not list(file.parent.glob("*.tmp"))
+    refused = mcp_call("briefing-writer.mjs", env, "save_briefing",
+                       {"markdown":"bad", "path": str(tmp_path / "elsewhere")})
+    assert refused[3]["result"]["isError"]
+    assert file.read_text() == "# My briefing\n" and not (tmp_path / "elsewhere").exists()
