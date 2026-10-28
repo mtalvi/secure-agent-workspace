@@ -170,6 +170,11 @@ Pattern E2E mounts `registry.authSecret` unchanged: a four-hour
 CI-only pull token is outside the guarantee for provider API keys and
 platform-admin mTLS authority. It must use a dedicated Secret.
 
+The Pattern passes `overrides/saw-users.yaml` to both `saw-users` and the
+portal chart. Its `defaults` (including the proxy image pin) apply to portal
+workspaces as well as Git-listed users. Explicit `sawUsers.defaults` in the
+portal chart takes precedence when a separate portal override is needed.
+
 ## Rotation operations
 
 - **Provider key:** update its Vault value or namespace Secret, wait for the
