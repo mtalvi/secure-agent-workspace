@@ -134,3 +134,35 @@ def test_public_issuer_ca_stays_in_the_guest_mount_list():
     proxy = next(d for d in docs if d["kind"] == "ConfigMap"
                  and d["metadata"]["name"] == "saw-test-credential-proxy-config")
     assert [b["secret"] for b in json.loads(proxy["data"]["config.json"])["bindings"]] == ["inference"]
+
+
+@pytest.mark.skipif(not HELM, reason="helm is not installed")
+def test_gmail_refresh_uses_only_the_shipped_profile_url():
+    docs = render(SAW, '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
+                  '-f', str(ROOT / 'tests/fixtures/credential-proxy-values.yaml'),
+                  '--set-json', 'additionalProviderSecrets=["gmail"]',
+                  '--set-json', 'credentialProxy.secrets=[{"name":"gmail","key":"access_token","providers":["gmail"],"refresh":true}]')
+    cm = next(d for d in docs if d['kind'] == 'ConfigMap' and d['metadata']['name'].endswith('credential-proxy-config'))
+    [binding] = json.loads(cm['data']['config.json'])['bindings']
+    assert binding['refresh'] == {'strategy': 'oauth2_refresh_token', 'tokenURL': 'https://oauth2.googleapis.com/token',
+                                  'refreshBeforeSeconds': 300, 'maxLifetimeSeconds': 3600,
+                                  'material': {'clientID':'client_id','clientSecret':'client_secret','refreshToken':'refresh_token'}}
+
+
+@pytest.mark.skipif(not HELM, reason="helm is not installed")
+@pytest.mark.parametrize('types,key', [(['nvidia'], 'api_key'), (['gmail','slack'], 'access_token'), (['gmail'], 'refresh_token')])
+def test_invalid_refresh_binding_is_refused(types, key):
+    binding = json.dumps([{'name':'gmail','key':key,'providers':types,'refresh':True}])
+    result = subprocess.run([HELM, 'template', 'saw-test', str(SAW), '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
+                             '-f', str(ROOT / 'tests/fixtures/credential-proxy-values.yaml'), '--set-json', 'additionalProviderSecrets=["gmail"]',
+                             '--set-json', 'credentialProxy.secrets=' + binding], capture_output=True, text=True)
+    assert result.returncode != 0 and 'refresh' in result.stderr
+
+
+def test_every_shipped_token_issuer_is_allowlisted():
+    allowed = yaml.safe_load((SAW / 'values.yaml').read_text())['egress']['allow']
+    from urllib.parse import urlsplit
+    for path in PROFILES.glob('*.yaml'):
+        for cred in yaml.safe_load(path.read_text()).get('credentials', []):
+            if cred.get('refresh'):
+                assert urlsplit(cred['refresh']['token_url']).hostname in allowed
