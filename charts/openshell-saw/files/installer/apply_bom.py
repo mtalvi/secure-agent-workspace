@@ -1770,7 +1770,7 @@ def resolve_credentials(profiles, secrets_dir, proxy):
                     f"provider '{p.name}' in workspace '{ws.name}' uses Secret "
                     f"'{p.credential_secret}' key '{p.credential_secret_key}', but credentialProxy.secrets "
                     "has no binding; add it before applying")
-            if bool(binding.get("refresh")) != bool(p.proxy_refresh):
+            if binding.get("refresh", False) is not bool(p.proxy_refresh):
                 raise InstallerError(f"provider '{p.name}' refresh binding does not match proxy refresh strategy")
             for material in ("client_id", "client_secret", "refresh_token"):
                 file = base / material

@@ -166,3 +166,21 @@ def test_every_shipped_token_issuer_is_allowlisted():
         for cred in yaml.safe_load(path.read_text()).get('credentials', []):
             if cred.get('refresh'):
                 assert urlsplit(cred['refresh']['token_url']).hostname in allowed
+
+
+@pytest.mark.skipif(not HELM, reason="helm is not installed")
+@pytest.mark.parametrize('token_url', ['http://oauth2.googleapis.com/token',
+    'https://oauth2.googleapis.com:8443/token', 'https://user@oauth2.googleapis.com/token',
+    'https://oauth2.googleapis.com/token?tenant=1', 'https://oauth2.googleapis.com/token#fragment',
+    'https://untrusted.example.test/token'])
+def test_shipped_refresh_url_is_validated_at_render(tmp_path, token_url):
+    chart = tmp_path / 'chart'
+    shutil.copytree(SAW, chart)
+    path = chart / 'files/provider-profiles/gmail.yaml'
+    profile = yaml.safe_load(path.read_text())
+    profile['credentials'][0]['refresh']['token_url'] = token_url
+    path.write_text(yaml.safe_dump(profile))
+    result = subprocess.run([HELM, 'template', 'saw-test', str(chart),
+        '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
+        '-f', str(ROOT / 'tests/fixtures/credential-proxy-values.yaml')],capture_output=True,text=True)
+    assert result.returncode != 0 and 'refresh token_url' in result.stderr
