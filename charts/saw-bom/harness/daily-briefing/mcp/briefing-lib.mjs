@@ -11,6 +11,7 @@ import { rootCertificates } from "node:tls";
 
 export const ROOT = process.env.BRIEFING_DIR || "/sandbox/briefing";
 const TEXT_LIMIT = 500;
+const MAX_PAGES = 200;
 
 export function today() {
   const now = new Date();
@@ -44,6 +45,29 @@ export function appendItems(day, items) {
 export function clip(text) {
   const t = String(text || "").replace(/\s+/g, " ").trim();
   return t.length > TEXT_LIMIT ? t.slice(0, TEXT_LIMIT) + "…" : t;
+}
+
+// Keep test and live page sizes small when needed, while never exceeding the
+// provider API's maximum page size.
+export function pageSize(max) {
+  const n = Number(process.env.BRIEFING_PAGE_SIZE);
+  return Number.isInteger(n) && n > 0 ? Math.min(n, max) : max;
+}
+
+// Follow a provider cursor until the complete list has arrived. A malformed
+// pagination response is an error: callers must not advance their saved
+// position after only a partial read.
+export async function drain(fetchPage) {
+  const used = new Set();
+  let cursor = "";
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const next = await fetchPage(cursor);
+    if (!next) return;
+    if (used.has(next)) throw new Error("pagination cursor repeated");
+    used.add(next);
+    cursor = next;
+  }
+  throw new Error(`more than ${MAX_PAGES} pages; position not advanced`);
 }
 
 // The sandbox's egress proxy re-signs TLS with OpenShell's CA. The server

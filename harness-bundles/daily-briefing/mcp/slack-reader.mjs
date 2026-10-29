@@ -1,7 +1,7 @@
 // MCP server (stdio): new Slack messages for the daily briefing, read-only.
 // SLACK_BOT_TOKEN holds an OpenShell placeholder; the `slack` provider
 // profile lets the sandbox proxy put the real token in for slack.com only.
-import { appendItems, clip, getJson, loadState, saveState, serve, today } from "./briefing-lib.mjs";
+import { appendItems, clip, drain, getJson, loadState, pageSize, saveState, serve, today } from "./briefing-lib.mjs";
 
 const API = process.env.SLACK_API_URL || "https://slack.com/api";
 
@@ -17,17 +17,31 @@ async function call(method, params) {
 
 async function channels() {
   const found = [];
-  let cursor = "";
-  for (let page = 0; page < 5; page++) {
+  await drain(async (cursor) => {
     const body = await call("conversations.list", {
-      types: "public_channel,private_channel", exclude_archived: true, limit: 200,
+      types: "public_channel,private_channel", exclude_archived: true, limit: pageSize(200),
       ...(cursor ? { cursor } : {}),
     });
     found.push(...(body.channels || []).filter((c) => c.is_member));
-    cursor = body.response_metadata?.next_cursor || "";
-    if (!cursor) break;
-  }
+    const next = body.response_metadata?.next_cursor || "";
+    if (body.has_more && !next) throw new Error("conversations.list: has_more without a cursor");
+    return next;
+  });
   return found;
+}
+
+async function history(ch, oldest) {
+  const messages = [];
+  await drain(async (cursor) => {
+    const body = await call("conversations.history", {
+      channel: ch.id, oldest, limit: pageSize(200), ...(cursor ? { cursor } : {}),
+    });
+    messages.push(...(body.messages || []));
+    const next = body.response_metadata?.next_cursor || "";
+    if (body.has_more && !next) throw new Error("conversations.history: has_more without a cursor");
+    return next;
+  });
+  return messages;
 }
 
 async function newMessages() {
@@ -45,23 +59,40 @@ async function newMessages() {
   };
   const items = [];
   const list = await channels();
+  const failures = [];
+  let file = null;
   for (const ch of list) {
     const oldest = state.channels[ch.id] || String(startSec);
-    const body = await call("conversations.history", { channel: ch.id, oldest, limit: 100 });
-    const messages = body.messages || [];
-    for (const m of [...messages].reverse()) {
+    let messages;
+    try {
+      messages = await history(ch, oldest);
+    } catch (err) {
+      failures.push(`#${ch.name}: ${err?.cause?.code || err.message}`);
+      continue;
+    }
+    messages.sort((a, b) => Number(a.ts) - Number(b.ts));
+    const chItems = [];
+    for (const m of messages) {
       if (m.subtype && m.subtype !== "bot_message") continue;
-      items.push({
+      chItems.push({
         source: "slack", channel: `#${ch.name}`, from: await userName(m.user || m.bot_id),
         time: new Date(Number(m.ts) * 1000).toISOString(), text: clip(m.text),
         replies: m.reply_count || 0,
       });
     }
+    if (chItems.length) file = appendItems(day, chItems);
+    items.push(...chItems);
     state.channels[ch.id] = messages.reduce((a, m) => (Number(m.ts) > Number(a) ? m.ts : a), oldest);
+    saveState("slack", state);
   }
-  const file = items.length ? appendItems(day, items) : null;
+  if (failures.length) {
+    throw new Error(`conversations.history failed; position kept for: ${failures.join("; ")}`);
+  }
   saveState("slack", state);
-  return { day, channels: list.map((c) => `#${c.name}`), new: items.length, items, file };
+  return {
+    day, channels: list.map((c) => `#${c.name}`), new: items.length,
+    items: items.slice(-50), more: Math.max(0, items.length - 50), file,
+  };
 }
 
 serve("slack-reader", [

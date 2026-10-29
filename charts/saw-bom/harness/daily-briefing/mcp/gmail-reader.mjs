@@ -2,7 +2,7 @@
 // GMAIL_ACCESS_TOKEN holds an OpenShell placeholder; the `gmail` provider
 // profile lets the namespace credential proxy mint and inject the real token
 // for gmail.googleapis.com only. Refresh material never reaches this process.
-import { appendItems, clip, getJson, loadState, saveState, serve, today } from "./briefing-lib.mjs";
+import { appendItems, clip, drain, getJson, loadState, pageSize, saveState, serve, today } from "./briefing-lib.mjs";
 
 const API = process.env.GMAIL_API_URL || "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -16,9 +16,21 @@ async function newMessages() {
   const { day, startSec } = today();
   const state = loadState("gmail", day, { seen: [] });
   const seen = new Set(state.seen);
-  const list = await getJson(`${API}/messages?maxResults=50&q=${encodeURIComponent(`after:${startSec}`)}`, token());
+  const ids = new Set();
+  await drain(async (pageToken) => {
+    const url = new URL(`${API}/messages`);
+    url.searchParams.set("maxResults", String(pageSize(500)));
+    url.searchParams.set("q", `after:${startSec}`);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const list = await getJson(url, token());
+    for (const { id } of list.messages || []) {
+      if (id) ids.add(id);
+    }
+    return list.nextPageToken || "";
+  });
   const items = [];
-  for (const { id } of list.messages || []) {
+  try {
+    for (const id of ids) {
     if (seen.has(id)) continue;
     const m = await getJson(`${API}/messages/${id}?format=metadata` +
       "&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date", token());
@@ -29,12 +41,18 @@ async function newMessages() {
       unread: (m.labelIds || []).includes("UNREAD"),
     });
     seen.add(id);
+    }
+  } catch (err) {
+    if (items.length) appendItems(day, items);
+    state.seen = [...seen];
+    saveState("gmail", state);
+    throw err;
   }
   items.sort((a, b) => a.time.localeCompare(b.time));
   const file = items.length ? appendItems(day, items) : null;
   state.seen = [...seen];
   saveState("gmail", state);
-  return { day, new: items.length, items, file };
+  return { day, new: items.length, items: items.slice(-50), more: Math.max(0, items.length - 50), file };
 }
 
 serve("gmail-reader", [
