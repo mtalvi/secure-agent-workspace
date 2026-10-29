@@ -587,6 +587,7 @@ def test_tekton_resources_compare_with_their_webhook_defaults(docs):
             d["metadata"]["name"]
 
 
+@pytest.mark.ci_external
 @pytest.mark.parametrize("portal_override", [False, True])
 def test_portal_workspaces_inherit_the_shared_proxy_image_pin(tmp_path, portal_override):
     shared = "registry.example.test/proxy@sha256:" + "a" * 64

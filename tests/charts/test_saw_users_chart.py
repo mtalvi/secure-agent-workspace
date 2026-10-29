@@ -660,6 +660,7 @@ def test_a_user_can_opt_into_the_demo_harness(tmp_path):
         "imageOverrides": {}}
 
 
+@pytest.mark.ci_external
 def test_the_personal_assistant_profile_turns_its_harness_on(tmp_path):
     docs = docs_from(render_file(tmp_path, [{'name':'carol','profiles':['personal-assistant']}]))
     assert helm_values(app(docs,'saw-carol-bom'))['harnessEnabled'] is True

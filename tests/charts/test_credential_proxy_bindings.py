@@ -2,7 +2,6 @@
 
 import json
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -134,6 +133,7 @@ def test_gitops_grants_registry_pull_before_bootstrapping_the_ca():
     assert pull_wave < int(hook["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"])
 
 
+@pytest.mark.ci_external
 @pytest.mark.skipif(not HELM, reason="helm is not installed")
 def test_public_issuer_ca_stays_in_the_guest_mount_list():
     docs = render(SAW, "-f", str(ROOT / "tests/fixtures/saw-network-topology.yaml"),
@@ -151,6 +151,7 @@ def test_public_issuer_ca_stays_in_the_guest_mount_list():
     assert [b["secret"] for b in json.loads(proxy["data"]["config.json"])["bindings"]] == ["inference"]
 
 
+@pytest.mark.ci_external
 @pytest.mark.skipif(not HELM, reason="helm is not installed")
 def test_gmail_refresh_uses_only_the_shipped_profile_url():
     docs = render(SAW, '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
@@ -164,16 +165,18 @@ def test_gmail_refresh_uses_only_the_shipped_profile_url():
                                   'material': {'clientID':'client_id','clientSecret':'client_secret','refreshToken':'refresh_token'}}
 
 
+@pytest.mark.ci_external
 @pytest.mark.skipif(not HELM, reason="helm is not installed")
 @pytest.mark.parametrize('types,key', [(['nvidia'], 'api_key'), (['gmail','slack'], 'access_token'), (['gmail'], 'refresh_token')])
 def test_invalid_refresh_binding_is_refused(types, key):
     binding = json.dumps([{'name':'gmail','key':key,'providers':types,'refresh':True}])
-    result = subprocess.run([HELM, 'template', 'saw-test', str(SAW), '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
-                             '-f', str(ROOT / 'tests/fixtures/credential-proxy-values.yaml'), '--set-json', 'additionalProviderSecrets=["gmail"]',
-                             '--set-json', 'credentialProxy.secrets=' + binding], capture_output=True, text=True)
+    result = run_helm([HELM, 'template', 'saw-test', str(SAW), '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
+                       '-f', str(ROOT / 'tests/fixtures/credential-proxy-values.yaml'), '--set-json', 'additionalProviderSecrets=["gmail"]',
+                       '--set-json', 'credentialProxy.secrets=' + binding], capture_output=True, text=True)
     assert result.returncode != 0 and 'refresh' in result.stderr
 
 
+@pytest.mark.ci_external
 def test_every_shipped_token_issuer_is_allowlisted():
     allowed = yaml.safe_load((SAW / 'values.yaml').read_text())['egress']['allow']
     from urllib.parse import urlsplit
@@ -183,6 +186,7 @@ def test_every_shipped_token_issuer_is_allowlisted():
                 assert urlsplit(cred['refresh']['token_url']).hostname in allowed
 
 
+@pytest.mark.ci_external
 @pytest.mark.skipif(not HELM, reason="helm is not installed")
 @pytest.mark.parametrize('token_url', ['http://oauth2.googleapis.com/token',
     'https://oauth2.googleapis.com:8443/token', 'https://user@oauth2.googleapis.com/token',
@@ -195,7 +199,8 @@ def test_shipped_refresh_url_is_validated_at_render(tmp_path, token_url):
     profile = yaml.safe_load(path.read_text())
     profile['credentials'][0]['refresh']['token_url'] = token_url
     path.write_text(yaml.safe_dump(profile))
-    result = subprocess.run([HELM, 'template', 'saw-test', str(chart),
-        '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
-        '-f', str(ROOT / 'tests/fixtures/credential-proxy-values.yaml')],capture_output=True,text=True)
+    result = run_helm([HELM, 'template', 'saw-test', str(chart),
+                       '-f', str(ROOT / 'tests/fixtures/saw-network-topology.yaml'),
+                       '-f', str(ROOT / 'tests/fixtures/credential-proxy-values.yaml')],
+                      capture_output=True, text=True)
     assert result.returncode != 0 and 'refresh token_url' in result.stderr

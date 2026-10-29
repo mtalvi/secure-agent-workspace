@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PROFILES = ROOT / "charts" / "governance-policy" / "profiles"
 
 
+@pytest.mark.ci_external
 @pytest.mark.parametrize("name, token_url, env", [
     ("slack", "https://slack.com/api/oauth.v2.access", "SLACK_BOT_TOKEN"),
     ("gmail", "https://oauth2.googleapis.com/token", "GMAIL_ACCESS_TOKEN")])
@@ -23,6 +24,7 @@ def test_the_profile_declares_the_refresh_contract(name, token_url, env):
     assert 0 < refresh["refresh_before_seconds"] < refresh["max_lifetime_seconds"]
 
 
+@pytest.mark.ci_external
 @pytest.mark.parametrize("name", ["slack", "gmail"])
 def test_read_only_and_reachable_from_node(name):
     doc = yaml.safe_load((PROFILES / f"{name}.yaml").read_text())
@@ -31,6 +33,7 @@ def test_read_only_and_reachable_from_node(name):
     assert {"/usr/bin/node-*", "/usr/local/bin/node"} <= set(doc["binaries"])
 
 
+@pytest.mark.ci_external
 @pytest.mark.parametrize("name, paths", [
     ("slack", ["/api/conversations.list", "/api/conversations.history", "/api/users.info"]),
     ("gmail", ["/gmail/v1/users/me/messages", "/gmail/v1/users/me/messages/18c2f0a1b2c3d4e5"])])
