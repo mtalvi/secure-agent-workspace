@@ -812,6 +812,8 @@ HARNESS_IMAGE_MAX_BYTES = 512 * 1024 * 1024
 # Keys configure_harness may set; a shape change must unset the ones it
 # no longer wants, not leave them stale.
 HARNESS_CONFIG_KEYS = ("plugins.load.paths", "skills.load.extraDirs")
+# Provider types that are also OpenClaw chat channels.
+OPENCLAW_CHAT_CHANNELS = frozenset({"slack"})
 OPENCLAW_EXEC_ENV = ("OPENCLAW_HOME=/sandbox SQLITE_TMPDIR=/sandbox/.openclaw/state "
                      "TMPDIR=/sandbox/.openclaw/state OPENCLAW_NIX_MODE=0")
 # mcp.json env/header value: exactly ${VAR}, or Authorization-style
@@ -1544,10 +1546,10 @@ def validate_harness(profiles, bundles):
             ref = sb.harness_ref or {}
             if not (sb.enabled and ref):
                 continue
-            if sb.type != "openclaw":
+            if sb.type not in ("openclaw", "nemoclaw"):
                 raise InstallerError(
                     f"sandbox '{sb.name}' has a harnessRef but type '{sb.type}'; "
-                    "only openclaw sandboxes load a harness")
+                    "only agent sandboxes (openclaw, nemoclaw) load a harness")
             image = harness_image(ref)
             if image:
                 if not DIGEST_IMAGE_RE.match(image):
@@ -4686,16 +4688,32 @@ class ProfileApplier:
         # openclaw_gateway_script restarts only on a harness refill, when none
         # is running, or when its settings changed; the files are in place either way.
         self.install_tool_gate(ws, sb, enable=True)
+        self.disable_provider_channels(ws, sb, exec_cmd, oc_env)
         # One script: the gateway secret is made and kept inside the sandbox
         # (the installer never sees it). The gateway is restarted only when
         # the harness was refilled, none is running, or its settings (auth
         # mode, users, origins) changed: a restart cuts live sessions.
         refilled = (self.harness_refilled.get((ws.name, sb.name), False)
                     or self.gate_refilled.get((ws.name, sb.name), False))
+        providers = [p for p in sb.providers if (ws.name, p) not in self.skipped]
         self.cli(*exec_cmd, "sh", "-c",
-                 openclaw_gateway_script(self.cfg, ws.name, sb.name, oc_env, refilled=refilled),
+                 openclaw_gateway_script(self.cfg, ws.name, sb.name, oc_env, refilled=refilled,
+                                         providers=providers),
                  check=False)
         self.install_keepalive(ws, sb)
+
+    def disable_provider_channels(self, ws, sb, exec_cmd, oc_env):
+        """Keep OpenClaw's own chat channel off for a provider that shares
+        its name (slack). The provider is for governed reads (the harness's
+        MCP servers); onboarding skips channels. Found live: with the Slack
+        provider attached, the gateway treats the slack channel as configured,
+        tries to install @openclaw/slack from npm at startup (egress denied)
+        and refuses to start; the UI then answers 502."""
+        types = {p.type for p in ws.providers if p.name in sb.providers}
+        for channel in sorted(types & OPENCLAW_CHAT_CHANNELS):
+            self.cli(*exec_cmd, "sh", "-c",
+                     f"{oc_env} openclaw config set channels.{channel}.enabled false",
+                     check=False)
 
     def configure_harness(self, ws, sb, exec_cmd, oc_env):
         """Point OpenClaw at the mounted bundle (openclaw_harness_config).
@@ -5048,7 +5066,19 @@ class ProfileApplier:
                 "creating it without agent onboarding")
             self.create_sandbox(ws, sb)
             return
-        if sb.type == "nemoclaw":
+        if sb.type == "nemoclaw" and sb.harness_ref:
+            # A harness is a volume mounted when the sandbox is created, and
+            # `nemoclaw onboard` cannot add one on podman (its host mounts
+            # are Docker only). The installer creates the NemoClaw sandbox
+            # itself, with the mount, and configures OpenClaw in it as it
+            # does after onboarding; a sandbox onboarded earlier, without
+            # the mount, is created again (create_sandbox).
+            log(f"Sandbox '{sb.name}': NemoClaw image with harness "
+                f"{sb.harness_ref.get('name') or sb.harness_ref.get('image')}; "
+                "created by the installer (no nemoclaw onboard)")
+            self.create_sandbox(ws, sb, configure_harness=False)
+            self.start_openclaw(ws, sb, provider)
+        elif sb.type == "nemoclaw":
             # Onboard once: on later boots the sandbox exists and nemoclaw
             # refuses to attach to the already running gateway.
             if self.sandbox_state(ws, sb) == "running":
@@ -5780,7 +5810,7 @@ _WRITE_PASSWORD_JS = ('const fs=require("fs"),f=process.argv[1];const c=JSON.par
 _NEW_SECRET_JS = 'process.stdout.write(require("crypto").randomBytes(24).toString("hex"))'
 
 
-def openclaw_gateway_script(cfg, workspace, sandbox, oc_env, refilled=False):
+def openclaw_gateway_script(cfg, workspace, sandbox, oc_env, refilled=False, providers=()):
     """The sandbox shell script that configures and (re)starts OpenClaw's
     gateway on 0.0.0.0:18789.
 
@@ -5876,6 +5906,10 @@ def openclaw_gateway_script(cfg, workspace, sandbox, oc_env, refilled=False):
         # The control UI is reached through a route, so the browser's Origin
         # is the route's https URL.
         lines.append(f"openclaw config set gateway.controlUi.allowedOrigins {q(json.dumps(origins))}")
+    # The gateway process keeps the environment it started with, so a
+    # provider attached since (its credential placeholder, e.g.
+    # SLACK_BOT_TOKEN) reaches the agent only after a restart.
+    lines.append(f"# providers: {' '.join(sorted(providers))}")
     # Every setting above is fixed text (the secret stays "$secret"), so
     # their digest says whether the running gateway has them.
     fingerprint = hashlib.sha256("\n".join(lines).encode()).hexdigest()
