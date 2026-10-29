@@ -99,6 +99,9 @@ func (b *Broker) Token(ctx context.Context, id string, spec Refresh, dir string)
 		return e.token, nil
 	}
 	if now.Before(e.retry) {
+		if e.token != "" && now.Before(e.expires) {
+			return e.token, nil
+		}
 		return "", errors.New(e.failure)
 	}
 	refreshToken := values[2]
@@ -110,14 +113,23 @@ func (b *Broker) Token(ctx context.Context, id string, spec Refresh, dir string)
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	binding := strings.SplitN(id, "/", 2)[0]
-	fail := func(code string) (string, error) {
-		e.token, e.failure, e.retry = "", code, now.Add(60*time.Second)
-		log.Printf("event=oauth-refresh binding=%s status=failed error=%s", binding, code)
+	fail := func(code string, transient bool) (string, error) {
+		e.failure, e.retry = code, now.Add(60*time.Second)
+		if transient && e.token != "" && now.Before(e.expires) {
+			if e.expires.Before(e.retry) {
+				e.retry = e.expires
+			}
+			log.Printf("event=oauth-refresh binding=%s status=failed error=%s transient=true cached_for=%d",
+				binding, code, int(e.expires.Sub(now).Seconds()))
+			return e.token, nil
+		}
+		e.token = ""
+		log.Printf("event=oauth-refresh binding=%s status=failed error=%s transient=%t", binding, code, transient)
 		return "", errors.New(code)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, spec.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return fail("request_failed")
+		return fail("request_failed", true)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	client := &http.Client{Transport: &http.Transport{Proxy: nil,
@@ -130,34 +142,41 @@ func (b *Broker) Token(ctx context.Context, id string, spec Refresh, dir string)
 	defer client.CloseIdleConnections()
 	resp, err := client.Do(req)
 	if err != nil {
-		return fail("request_failed")
+		return fail("request_failed", true)
 	}
 	defer resp.Body.Close()
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fail("invalid_response", true)
+	}
 	var body struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int64  `json:"expires_in"`
 		Error        string `json:"error"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		return fail("invalid_response")
-	}
 	if resp.StatusCode != http.StatusOK {
 		// A fixed vocabulary prevents arbitrary issuer text (including an
 		// error_description containing secrets) from entering logs or errors.
+		_ = json.Unmarshal(rawBody, &body)
 		code := "token_endpoint_error"
 		switch body.Error {
 		case "invalid_grant", "invalid_client", "invalid_request", "unauthorized_client",
 			"unsupported_grant_type", "invalid_scope", "temporarily_unavailable", "server_error":
 			code = body.Error
 		}
-		return fail(code)
+		transient := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 ||
+			body.Error == "temporarily_unavailable" || body.Error == "server_error"
+		return fail(code, transient)
+	}
+	if err := json.Unmarshal(rawBody, &body); err != nil {
+		return fail("invalid_response", true)
 	}
 	if body.AccessToken == "" || strings.ContainsAny(body.AccessToken, "\r\n") || body.ExpiresIn <= 0 {
-		return fail("invalid_response")
+		return fail("invalid_response", true)
 	}
 	lifetime := min(body.ExpiresIn, int64(spec.MaxLifetimeSeconds))
-	e.token, e.expires, e.failure = body.AccessToken, now.Add(time.Duration(lifetime)*time.Second), ""
+	e.token, e.expires, e.failure, e.retry = body.AccessToken, now.Add(time.Duration(lifetime)*time.Second), "", time.Time{}
 	rotated := body.RefreshToken != ""
 	if rotated {
 		e.rotated = body.RefreshToken

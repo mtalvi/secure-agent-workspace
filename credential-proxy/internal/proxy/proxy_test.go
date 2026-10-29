@@ -289,9 +289,15 @@ func TestInterceptFlushesStreamingResponses(t *testing.T) {
 
 func TestGmailRefreshAndFailureIsolation(t *testing.T) {
 	var fail atomic.Bool
+	var transient atomic.Bool
 	var posts atomic.Int32
 	issuer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		posts.Add(1)
+		if transient.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `<html>temporarily unavailable</html>`)
+			return
+		}
 		if fail.Load() {
 			w.WriteHeader(400)
 			_, _ = io.WriteString(w, `{"error":"invalid_grant","error_description":"private-material"}`)
@@ -332,7 +338,8 @@ func TestGmailRefreshAndFailureIsolation(t *testing.T) {
 	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, issuer.Listener.Addr().String())
 	}
-	f.store.Broker = &oauth.Broker{Client: &http.Client{Transport: transport}}
+	now := time.Unix(1700000000, 0)
+	f.store.Broker = &oauth.Broker{Client: &http.Client{Transport: transport}, Now: func() time.Time { return now }}
 	health := func() {
 		w := httptest.NewRecorder()
 		f.server.Health(w, httptest.NewRequest("GET", "/healthz", nil))
@@ -368,6 +375,23 @@ func TestGmailRefreshAndFailureIsolation(t *testing.T) {
 	if posts.Load() != 2 {
 		t.Fatal("refresh bindings shared or invalidated each other's cache")
 	}
+	transient.Store(true)
+	now = now.Add(3300 * time.Second)
+	request("gmail.googleapis.com", "saw-cred.gmail.access_token", 200, "")
+	if posts.Load() != 3 {
+		t.Fatal("transient refresh did not make one issuer request")
+	}
+	now = now.Add(30 * time.Second)
+	request("gmail.googleapis.com", "saw-cred.gmail.access_token", 200, "")
+	if posts.Load() != 3 {
+		t.Fatal("transient refresh ignored its backoff")
+	}
+	now = time.Unix(1700000000, 0).Add(3600 * time.Second)
+	request("gmail.googleapis.com", "saw-cred.gmail.access_token", 502, "credential refresh failed")
+	if posts.Load() != 4 {
+		t.Fatal("expired cached token did not fail closed")
+	}
+	transient.Store(false)
 	fail.Store(true)
 	if err := os.WriteFile(filepath.Join(gmail, "refresh_token"), []byte("wrong-refresh-material"), 0600); err != nil {
 		t.Fatal(err)
@@ -375,7 +399,7 @@ func TestGmailRefreshAndFailureIsolation(t *testing.T) {
 	request("gmail.googleapis.com", "saw-cred.gmail.access_token", 502, "credential refresh failed")
 	request("gmail.googleapis.com", "saw-cred.inference.api_key", 200, "")
 	health()
-	if posts.Load() != 3 {
+	if posts.Load() != 5 {
 		t.Fatal("static request or health triggered OAuth")
 	}
 }

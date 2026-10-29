@@ -155,9 +155,13 @@ gateway PKI and causes the same sandbox recreation.
   `client_secret`, and `refresh_token`, caches access tokens in memory, and
   refreshes five minutes before expiry. Material keys never get their own
   marker or binding. The VM receives only `saw-cred.gmail.access_token`.
-  Readiness checks material presence without making token requests. Failed
-  refreshes return a sanitized 502 and back off for 60 seconds; static
-  Slack and inference bindings continue working.
+  Readiness checks material presence without making token requests. A transient
+  failure (network error, timeout, HTTP 429/5xx, `temporarily_unavailable`, or
+  `server_error`) during early refresh keeps serving the cached token until it
+  actually expires and retries every 60 seconds. An authorization failure
+  (`invalid_grant`, `invalid_client`, and related permanent errors) drops the
+  token at once and returns a sanitized 502. Static Slack and inference
+  bindings continue working either way.
 - Slack uses a static bot token. Slack rotating refresh tokens are unsupported:
   persisting their rotation back to Vault requires a separate implementation.
 - Google OAuth clients in **Testing** issue refresh tokens that expire after
