@@ -19,6 +19,3 @@ users:
   profiles:
   - personal-assistant
   vaultPrefix: secret/data/hub/saw-erin
-  values:
-    credentialProxy:
-      enabled: false
