@@ -1,3 +1,21 @@
-# Add real account names here after creating them with keycloak-add-users.
-# Each entry creates saw-<name>. Demo entries are in saw-users-demo.yaml.
-users: []
+defaults:
+  openshellSaw:
+    credentialProxy:
+      image: image-registry.openshift-image-registry.svc:5000/openshell-agents/saw-credential-proxy@sha256:e1899ab9fbab6b6e466e2276a9cb753e5c889b7150059f1854bc5011070bc09e
+users:
+- name: alice
+- name: bob
+  values:
+    credentialProxy:
+      enabled: false
+- name: dana
+  profiles:
+  - personal-assistant
+  vaultPrefix: secret/data/hub/saw-dana
+- name: erin
+  profiles:
+  - personal-assistant
+  vaultPrefix: secret/data/hub/saw-erin
+  values:
+    credentialProxy:
+      enabled: false
