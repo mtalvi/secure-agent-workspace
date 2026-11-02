@@ -12,6 +12,9 @@ users:
   profiles:
   - personal-assistant
   vaultPrefix: secret/data/hub/saw-dana
+  values:
+    credentialProxy:
+      enabled: false
 - name: erin
   profiles:
   - personal-assistant
