@@ -1,3 +1,22 @@
-# Add real account names here after creating them with keycloak-add-users.
-# Each entry creates saw-<name>. Demo entries are in saw-users-demo.yaml.
-users: []
+# Live image-default checks: preserve the #145 users and add a fresh proxy user.
+# Intentionally no credentialProxy.image override: use the chart default.
+users:
+- name: alice
+  values:
+    credentialProxy:
+      enabled: false
+- name: bob
+- name: dana
+  profiles:
+  - personal-assistant
+  vaultPrefix: secret/data/hub/saw-dana
+  values:
+    credentialProxy:
+      enabled: false
+- name: erin
+  profiles:
+  - personal-assistant
+  vaultPrefix: secret/data/hub/saw-erin
+- name: pin01
+  profiles:
+  - data-science
