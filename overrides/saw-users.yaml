@@ -3,6 +3,9 @@ users:
   webSearch:
     enabled: false
   values:
+    source:
+      dataSource: openshell-gateway-gpu-f50565b6
+      dataSourceNamespace: openshell-agents
     vm:
       cores: 16
       memory: 64Gi
