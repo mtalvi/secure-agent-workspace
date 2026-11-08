@@ -28,3 +28,8 @@ clusterGroup:
       - name: global.webSearch.enabled
         value: '{{ .Values.global.webSearch.enabled }}'
         forceString: true
+      # The router address is supplied only through private runtime parameters.
+      - name: defaults.openshellSaw.networkPolicy.extraEgress[0].ports[0].protocol
+        value: TCP
+      - name: defaults.openshellSaw.networkPolicy.extraEgress[0].ports[0].port
+        value: '443'
