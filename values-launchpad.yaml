@@ -3,11 +3,16 @@ global:
     enabled: false
 clusterGroup:
   namespaces:
-    openshift-cnv: null
-    rhdh: null
-    rhdh-operator: null
-    saw-portal: null
-    redhat-ods-operator: null
+    openshift-cnv:
+      disabled: true
+    rhdh:
+      disabled: true
+    rhdh-operator:
+      disabled: true
+    saw-portal:
+      disabled: true
+    redhat-ods-operator:
+      disabled: true
   subscriptions:
     openshift-virtualization: null
     rhdh: null
