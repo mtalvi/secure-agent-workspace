@@ -21,3 +21,10 @@ clusterGroup:
   applications:
     openshift-cnv: null
     openshell-rhdh: null
+    saw-users:
+      overrides:
+      - name: ownerResolution.enabled
+        value: 'false'
+      - name: global.webSearch.enabled
+        value: '{{ .Values.global.webSearch.enabled }}'
+        forceString: true
