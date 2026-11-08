@@ -36,7 +36,7 @@ spec:
       # profile, so shipping this as true would pass --gpu on every default
       # deploy and fail verification on clusters without passthrough.
       gpu:
-        enabled: true
+        enabled: false
         count: 1
     - name: toolbox
       type: generic
