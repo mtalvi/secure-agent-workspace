@@ -1,0 +1,18 @@
+global:
+  webSearch:
+    enabled: false
+clusterGroup:
+  namespaces:
+    openshift-cnv: null
+    rhdh: null
+    rhdh-operator: null
+    saw-portal: null
+    redhat-ods-operator: null
+  subscriptions:
+    openshift-virtualization: null
+    rhdh: null
+    openshift-pipelines: null
+    openshift-ai: null
+  applications:
+    openshift-cnv: null
+    openshell-rhdh: null

@@ -1,12 +1,16 @@
-# Add real account names here after creating them with keycloak-add-users.
-# Each entry creates saw-<name>. Demo entries are in saw-users-demo.yaml.
-users: []
-
-# For a custom inference endpoint outside the cluster, uncomment this block
-# and replace the hostname with the one in
-# overrides/governance-profiles/custom-inference.yaml and inference.url.
-# defaults:
-#   openshellSaw:
-#     egress:
-#       extraAllow:
-#         - api.inference.example.com
+users:
+- name: gpu1
+  webSearch:
+    enabled: false
+  values:
+    vm:
+      cores: 16
+      memory: 64Gi
+      diskSize: 200Gi
+      dedicatedCpuPlacement: true
+      gpu:
+        enabled: true
+        count: 1
+        deviceName: nvidia.com/l40s
+    route:
+      hostTemplate: ea00b265-15ef-1442-de91-a1b6398d35bd-in-ocp-{app}.apps.launchpad.nvidia.com
