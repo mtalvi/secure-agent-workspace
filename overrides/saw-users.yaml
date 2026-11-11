@@ -4,6 +4,8 @@ defaults:
   openshellSaw:
     credentialProxy:
       enabled: true
+    source:
+      registryURL: docker://image-registry.openshift-image-registry.svc:5000/openshell-agents/openshell-gateway@sha256:9ca1a452ddf329b1fdbd838d0dd130f6fb7a085dc98ec8bc2a8d0b624ab30a25
     vm:
       gpu:
         enabled: false
