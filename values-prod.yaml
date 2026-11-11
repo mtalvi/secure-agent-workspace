@@ -148,6 +148,10 @@ clusterGroup:
       name: governance-interceptor
       namespace: openshell-agents
       path: charts/governance-interceptor
+      # Preliminary acceptance only: reviewed OpenShell v0.1.6 local build.
+      overrides:
+        - name: image
+          value: image-registry.openshift-image-registry.svc:5000/openshell-agents/governance-interceptor@sha256:d80a69d579e56b97182f12ababe2d055d65db1b9a02709fa1077c6f45dbb7c3e
       syncPolicy:
         automated:
           prune: true
