@@ -1,5 +1,15 @@
-# cluster-qpvbj preliminary acceptance. Users are added after platform convergence.
-users: []
+# cluster-qpvbj preliminary acceptance with network isolation enabled.
+users:
+- name: nptest-a
+  profiles:
+  - data-science
+- name: nptest-b
+  profiles:
+  - custom-inference
+  values:
+    egress:
+      extraAllow:
+      - integrate.api.nvidia.com
 defaults:
   openshellSaw:
     credentialProxy:
@@ -11,3 +21,18 @@ defaults:
         enabled: false
     webSearch:
       enabled: false
+    networkPolicy:
+      clusterNetworkCIDRs:
+      - 10.232.0.0/14
+      serviceNetworkCIDRs:
+      - 172.231.0.0/16
+      enabled: true
+    cleanupApi:
+      serviceIP: 172.231.0.1
+      endpoints:
+      - ip: 10.10.10.10
+        port: 6443
+      - ip: 10.10.10.11
+        port: 6443
+      - ip: 10.10.10.12
+        port: 6443
