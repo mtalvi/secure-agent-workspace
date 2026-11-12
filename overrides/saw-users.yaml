@@ -1,5 +1,15 @@
-# cluster-jmq4r clean acceptance: add test owners after platform installation.
-users: []
+# cluster-jmq4r clean acceptance; shipped public interceptor default.
+users:
+- name: nptest-a
+  profiles:
+  - data-science
+- name: nptest-b
+  profiles:
+  - custom-inference
+  values:
+    egress:
+      extraAllow:
+      - integrate.api.nvidia.com
 defaults:
   openshellSaw:
     credentialProxy:
@@ -12,15 +22,17 @@ defaults:
     networkPolicy:
       enabled: true
       clusterNetworkCIDRs:
-        - 10.232.0.0/14
+      - 10.232.0.0/14
       serviceNetworkCIDRs:
-        - 172.231.0.0/16
+      - 172.231.0.0/16
     cleanupApi:
       serviceIP: 172.231.0.1
       endpoints:
-        - ip: 10.10.10.10
-          port: 6443
-        - ip: 10.10.10.11
-          port: 6443
-        - ip: 10.10.10.12
-          port: 6443
+      - ip: 10.10.10.10
+        port: 6443
+      - ip: 10.10.10.11
+        port: 6443
+      - ip: 10.10.10.12
+        port: 6443
+    source:
+      registryURL: docker://image-registry.openshift-image-registry.svc:5000/openshell-agents/openshell-gateway@sha256:cd01232efc38515d0506781544dc643cbddd77f6c7c231682c4e24ce35d013d0
