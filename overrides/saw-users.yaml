@@ -1,11 +1,26 @@
-# Add real account names here after creating them with keycloak-add-users.
-# Each entry creates saw-<name>. Demo entries are in saw-users-demo.yaml.
+# cluster-jmq4r clean acceptance: add test owners after platform installation.
 users: []
-
-# Opt in only for users of a configured custom-inference endpoint. Match
-# the hostname in overrides/governance-profiles/custom-inference.yaml.
-# defaults:
-#   openshellSaw:
-#     egress:
-#       extraAllow:
-#         - api.inference.example.com
+defaults:
+  openshellSaw:
+    credentialProxy:
+      enabled: true
+    vm:
+      gpu:
+        enabled: false
+    webSearch:
+      enabled: false
+    networkPolicy:
+      enabled: true
+      clusterNetworkCIDRs:
+        - 10.232.0.0/14
+      serviceNetworkCIDRs:
+        - 172.231.0.0/16
+    cleanupApi:
+      serviceIP: 172.231.0.1
+      endpoints:
+        - ip: 10.10.10.10
+          port: 6443
+        - ip: 10.10.10.11
+          port: 6443
+        - ip: 10.10.10.12
+          port: 6443
