@@ -10,6 +10,16 @@ users:
     egress:
       extraAllow:
       - integrate.api.nvidia.com
+- name: nptest-c
+  profiles:
+  - custom-inference
+  values:
+    egress:
+      extraAllow:
+      - integrate.api.nvidia.com
+- name: nptest-d
+  profiles:
+  - data-science
 defaults:
   openshellSaw:
     credentialProxy:
