@@ -6,7 +6,7 @@ global:
   # Turn off when Vault has no web-search key. Per-user webSearch.enabled wins.
   # Or install with: ./pattern.sh make install WEB_SEARCH_ENABLED=false
   webSearch:
-    enabled: true
+    enabled: false
   # Which service governs every SAW gateway (docs/apf.md):
   #   interceptor  the OpenShell governance interceptor (default)
   #   apf          NVIDIA Agent Policy Fabric: private images on ghcr.io, so
