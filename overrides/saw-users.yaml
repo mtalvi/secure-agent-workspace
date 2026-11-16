@@ -6,6 +6,9 @@ users:
 - name: upgrade-u2
   profiles:
   - custom-inference
+- name: upgrade-u3
+  profiles:
+  - data-science
 defaults:
   openshellSaw:
     networkPolicy:
