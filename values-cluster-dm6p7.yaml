@@ -23,6 +23,11 @@ clusterGroup:
       overrides:
       - name: image
         value: image-registry.openshift-image-registry.svc:5000/saw-pr166-builds/governance-interceptor@sha256:0517ea7ede21f48081618c90731208b5c54b26d5361c304f62186f371dfa4e21
+    review-kata-platform:
+      name: review-kata-platform
+      namespace: openshift-sandboxed-containers-operator
+      path: overrides/pr166-kata-platform
+      kustomize: true
   subscriptions:
     nfd:
       name: nfd
