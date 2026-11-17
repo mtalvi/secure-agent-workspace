@@ -6,6 +6,7 @@ clusterGroup:
       operatorGroup: true
       targetNamespaces:
       - openshift-nfd
+    saw-pr166-builds: null
   applications:
     agent-sandbox:
       name: agent-sandbox
@@ -28,6 +29,12 @@ clusterGroup:
       namespace: openshift-sandboxed-containers-operator
       path: overrides/pr166-kata-platform
       kustomize: true
+    review-image-cache:
+      name: review-image-cache
+      namespace: saw-pr166-builds
+      path: charts/saw-image-cache
+      extraValueFiles:
+      - /overrides/pr166-image-cache.yaml
   subscriptions:
     nfd:
       name: nfd
