@@ -1,0 +1,12 @@
+# Review deployment of PR #166 on cluster-dm6p7. No owner identities or credentials.
+clusterGroup:
+  namespaces:
+    agent-sandbox-system:
+  applications:
+    agent-sandbox:
+      name: agent-sandbox
+      namespace: agent-sandbox-system
+      path: charts/agent-sandbox
+      overrides:
+        - name: enabled
+          value: "true"
