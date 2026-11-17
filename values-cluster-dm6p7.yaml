@@ -1,12 +1,26 @@
-# Review deployment of PR #166 on cluster-dm6p7. No owner identities or credentials.
+# PR166 review site configuration; no owner identities or credentials.
 clusterGroup:
   namespaces:
-    agent-sandbox-system:
+    agent-sandbox-system: null
+    openshift-nfd:
+      operatorGroup: true
+      targetNamespaces:
+      - openshift-nfd
   applications:
     agent-sandbox:
       name: agent-sandbox
       namespace: agent-sandbox-system
       path: charts/agent-sandbox
       overrides:
-        - name: enabled
-          value: "true"
+      - name: enabled
+        value: 'true'
+    review-node-features:
+      name: review-node-features
+      namespace: openshift-nfd
+      path: overrides/pr166-node-features
+      kustomize: true
+  subscriptions:
+    nfd:
+      name: nfd
+      namespace: openshift-nfd
+      channel: stable
