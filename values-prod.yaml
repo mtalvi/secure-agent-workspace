@@ -170,6 +170,8 @@ clusterGroup:
       name: saw-kata
       namespace: openshift-sandboxed-containers-operator
       path: charts/saw-kata
+      overrides:
+        - {name: enabled, value: "true"}
     # Collector for the OCSF events container gateways and their supervisors
     # export (best-effort audit). Point its exporters at your SIEM or log store.
     saw-telemetry:

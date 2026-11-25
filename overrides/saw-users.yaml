@@ -17,6 +17,8 @@
 #       deployment: {mode: container}
 users:
   - name: kata1
+    ownerSubject: a859a0a7-6b63-4a8e-9967-59ef7caa1f04
+    intentGeneration: 3
     profiles: [custom-inference]
     vaultPrefix: secret/data/hub
     customInferenceURL: https://integrate.api.nvidia.com/v1
@@ -32,3 +34,8 @@ users:
 #     egress:
 #       extraAllow:
 #         - api.inference.example.com
+
+# Cycle only this test workspace after correcting the initial credential.
+containerSites:
+  kata1:
+    desiredState: Running
