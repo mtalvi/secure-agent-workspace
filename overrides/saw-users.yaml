@@ -15,7 +15,15 @@
 #       inference.model: <public model name>
 #     values:
 #       deployment: {mode: container}
-users: []
+users:
+  - name: kata1
+    profiles: [custom-inference]
+    vaultPrefix: secret/data/hub
+    customInferenceURL: https://integrate.api.nvidia.com/v1
+    modelInputs:
+      inference.model: nvidia/nemotron-3.5-lightning-30b-a3b
+    values:
+      deployment: {mode: kata}
 
 # Opt in only for users of a configured custom-inference endpoint. Match
 # the hostname in overrides/governance-profiles/custom-inference.yaml.

@@ -134,6 +134,7 @@ clusterGroup:
       path: charts/saw-users
       extraValueFiles:
         - /overrides/saw-container-defaults.yaml
+        - /overrides/saw-container-demo.yaml
         - /overrides/saw-users.yaml
       overrides:
         - name: ownerResolution.enabled
@@ -161,6 +162,7 @@ clusterGroup:
         # containerDefaults (the shared site for portal container requests)
         # and portal.deploymentModes come from the same files as saw-users.
         - /overrides/saw-container-defaults.yaml
+        - /overrides/saw-container-demo.yaml
         - /overrides/saw-users.yaml
     # Kata runtime for Kata workspaces. Reboots the selected workers when
     # enabled (charts/saw-kata); off by default.
