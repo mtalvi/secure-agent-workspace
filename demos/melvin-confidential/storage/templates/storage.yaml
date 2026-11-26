@@ -1,0 +1,85 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: saw-demo-nfs
+  labels:
+    saw.redhat.com/demo: melvin-confidential
+provisioner: file.csi.azure.com
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  protocol: nfs
+  skuName: Premium_LRS
+  matchTags: "true"
+  tags: sawDemo=melvin-confidential
+mountOptions:
+  - nconnect=4
+  - noresvport
+  - actimeo=1
+{{- if .Values.probe }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: melvin-storage-probe
+  labels:
+    saw.redhat.com/demo: melvin-confidential
+spec:
+  storageClassName: saw-demo-nfs
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: melvin-storage-probe
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        node-role.kubernetes.io/worker: ""
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: probe
+          image: {{ required "pinned public Python image required" .Values.image | quote }}
+          command:
+            - python3
+            - -c
+            - |
+              import fcntl,json,os,pathlib,tempfile
+              with tempfile.TemporaryDirectory(dir='/volume') as root:
+                p=pathlib.Path(root)/'source'
+                p.write_text('demo filesystem check')
+                p.chmod(0o444)
+                assert p.stat().st_mode & 0o777 == 0o444
+                assert p.stat().st_uid == os.getuid()
+                q=p.with_name('linked')
+                os.link(p,q)
+                assert p.stat().st_ino == q.stat().st_ino
+                q.rename(q.with_name('renamed'))
+                with p.with_name('lock').open('w') as f:
+                  fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                  os.fsync(f.fileno())
+              print(json.dumps(dict(posixPermissions=True,ownerUID=True,hardLinks=True,rename=True,locking=True)))
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          volumeMounts:
+            - {name: data, mountPath: /volume}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: melvin-storage-probe}
+{{- end }}

@@ -49,6 +49,7 @@ spec:
         gatewayEndpoint: https://{{ $u }}-gateway.{{ $ns }}.svc:17670
         gatewayCA: {{ $r.gatewayCA | quote }}
         issuer: {{ $r.issuer | default (printf "https://openshell-keycloak-ingress-%s.apps.%s/realms/openshell" $r.keycloakNamespace $.Values.global.clusterDomain) | quote }}
+        issuerCA: {{ $r.issuerCA | default (dig "oidc" "caBundle" "" ($site.stack.gateway.values | default dict)) | quote }}
         ownerLogin: {{ $u }}
         ownerSubject: {{ $.Values.ownerSubject }}
         installationID: {{ $.Values.installationID }}

@@ -3,6 +3,8 @@ clientID: ""
 keycloakNamespace: ""
 keycloakProvisionerSecret: ""
 issuer: ""
+# Public CA for an explicitly trusted private OIDC issuer. TLS verification stays enabled.
+issuerCA: ""
 audience: openshell-cli
 gatewayEndpoint: ""
 gatewayCA: ""

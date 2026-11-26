@@ -13,6 +13,35 @@ CHART = Path(__file__).resolve().parents[2] / "charts/saw-workspace-relay"
 pytestmark = [pytest.mark.ci_external, pytest.mark.skipif(not shutil.which("helm"), reason="Helm required")]
 
 
+@pytest.mark.parametrize("issuer_ca", ["", "public-ca-fixture"])
+def test_optional_issuer_trust_reaches_registration_refresh_and_browser(issuer_ca):
+    fixture = CHART.parents[1] / "tests/fixtures/saw-workspace-relay-values.yaml"
+    result = run_helm(["helm", "template", "relay", str(CHART), "-n", "ui", "-f", str(fixture),
+                      "--set-string", "issuerCA=" + issuer_ca], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    docs = [d for d in yaml.safe_load_all(result.stdout) if d]
+    config = next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "relay")
+    pod = next(d for d in docs if d["kind"] == "Deployment")["spec"]["template"]["spec"]
+    containers = {c["name"]: c for c in pod["initContainers"] + pod["containers"]}
+    identity = next(d for d in docs if d["kind"] == "Job" and d["metadata"]["namespace"] == "saw-keycloak")["spec"]["template"]["spec"]
+    expected = [{"name": "SSL_CERT_FILE", "value": "/config/issuer-ca.crt"}] if issuer_ca else []
+    for name in ("initial-token", "token-refresh"):
+        assert containers[name].get("env", []) == expected
+    assert ("--provider-ca-file=/config/issuer-ca.crt" in containers["browser-login"]["args"]) == bool(issuer_ca)
+    assert ("issuer-ca.crt" in config["data"]) == bool(issuer_ca)
+    assert any(e["name"] == "SSL_CERT_FILE" for e in identity["containers"][0]["env"]) == bool(issuer_ca)
+    assert any(v["name"] == "issuer-ca" for v in identity["volumes"]) == bool(issuer_ca)
+    assert "--ssl-insecure-skip-verify" not in result.stdout
+
+
+def test_relay_public_ca_rejects_private_key_material():
+    fixture = CHART.parents[1] / "tests/fixtures/saw-workspace-relay-values.yaml"
+    result = run_helm(["helm", "template", "relay", str(CHART), "-n", "ui", "-f", str(fixture),
+                      "--set-string", "issuerCA=-----BEGIN PRIVATE KEY-----"], capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "public certificates only" in result.stderr
+
+
 def test_secret_and_membership_boundaries(tmp_path):
     values = dict(enabled=True, clientID="site-agent", keycloakNamespace="kc", keycloakProvisionerSecret="kc-admin",
                   issuer="https://kc.example/realms/openshell", trustedNamespace="trusted", gatewayNamespace="runtime",

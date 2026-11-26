@@ -119,6 +119,27 @@ def test_existing_keycloak_username_without_saved_subject_is_not_adopted(demo, m
         demo.users.accounts(demo)
 
 
+def test_demo_storage_refuses_a_class_owned_by_another_release(demo, monkeypatch):
+    monkeypatch.setattr(demo, "get", lambda *args: {"metadata": {"labels": {demo.LABEL: demo.DEMO},
+        "annotations": {"meta.helm.sh/release-name": "shared-storage", "meta.helm.sh/release-namespace": "other"}}})
+    monkeypatch.setattr(demo, "run", lambda *args, **kw: pytest.fail("Must not mutate another release"))
+    with pytest.raises(RuntimeError, match="outside the demo release"):
+        demo.users.storage.deploy(demo)
+
+
+def test_generated_demo_uses_posix_shares_and_block_databases(demo, monkeypatch):
+    import base64
+    monkeypatch.setattr(demo, "get", lambda *args: {"data": {"tls.crt": base64.b64encode(b"public-ca").decode()}})
+    pins = json.loads((DEMO / "pins.json").read_text())
+    config = demo.users.values(demo, "baseline", {"subject": "subject", "registration": "a" * 16,
+        "installationID": "installation"}, pins, "b" * 40)
+    stack = config["containerDefaults"]["stack"]
+    assert stack["gateway"]["values"]["kubernetes"]["storage"]["className"] == "saw-demo-nfs"
+    assert stack["gateway"]["values"]["kubernetes"]["storage"]["gatewayClassName"] == "managed-csi"
+    assert stack["audit"]["values"]["exchangeStorageClass"] == "saw-demo-nfs"
+    assert stack["audit"]["values"]["historyStorageClass"] == "managed-csi"
+
+
 def test_created_account_retry_uses_saved_subject_when_realm_strips_attributes(demo, monkeypatch):
     import uuid
     saved = {owner: {"registration": str(i) * 16, "subject": str(uuid.UUID(int=i))}

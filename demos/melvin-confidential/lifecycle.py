@@ -10,6 +10,7 @@ import urllib.request
 import inference
 import users
 import verify
+import storage
 
 
 def owned_namespace(d, name, installation=None):
@@ -69,6 +70,7 @@ def finish_rotation(d):
 
 def cleanup(d):
     owners = users.saved_accounts(d)
+    storage.capture_accounts(d)
     vms = d.load("cleanup-peer-vms.json") if (d.STATE / "cleanup-peer-vms.json").exists() else []
     namespaces = [inference.NS] + ["saw-" + owner for owner in owners]
     for ns in namespaces:
@@ -108,6 +110,7 @@ def cleanup(d):
     if owned_namespace(d, users.GOV):
         for release in ("melvin-governance", "melvin-governance-policy"):
             d.run("helm", "uninstall", release, "-n", users.GOV, "--ignore-not-found", "--wait", "--timeout", "5m", timeout=330)
+    storage.cleanup(d)
     for ns in sorted(d.NAMESPACES):
         if owned_namespace(d, ns):
             d.oc("delete", "namespace", ns, "--wait=false")

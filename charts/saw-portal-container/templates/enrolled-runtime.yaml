@@ -24,7 +24,8 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata: {name: portal-ledger, namespace: {{ $ctl }}}
 spec:
-  {{- with $site.stack.audit.values.storageClass }}
+  {{- /* The controller ledger also needs filesystem locking. */}}
+  {{- with $site.stack.audit.values.historyStorageClass | default $site.stack.audit.values.storageClass }}
   storageClassName: {{ . }}
   {{- end }}
   accessModes: [ReadWriteOnce]

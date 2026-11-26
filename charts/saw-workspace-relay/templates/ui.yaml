@@ -8,6 +8,10 @@ data:
   users: {{ printf "%s\n" $v.ownerSubject | quote }}
   ca.crt: |
 {{ $v.gatewayCA | indent 4 }}
+  {{- if $v.issuerCA }}
+  issuer-ca.crt: |
+{{ $v.issuerCA | indent 4 }}
+  {{- end }}
   token.py: |
 {{ .Files.Get "files/token.py" | indent 4 }}
   saw_ui_limit.py: |
@@ -44,6 +48,9 @@ spec:
       - name: initial-token
         image: {{ $v.pythonImage }}
         command: [python3, /config/token.py, once]
+        {{- if $v.issuerCA }}
+        env: [{name: SSL_CERT_FILE, value: /config/issuer-ca.crt}]
+        {{- end }}
         securityContext: &restricted {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
         volumeMounts: &tokenMounts
         - {name: config, mountPath: /config, readOnly: true}
@@ -53,6 +60,9 @@ spec:
       - name: token-refresh
         image: {{ $v.pythonImage }}
         command: [python3, /config/token.py, refresh]
+        {{- if $v.issuerCA }}
+        env: [{name: SSL_CERT_FILE, value: /config/issuer-ca.crt}]
+        {{- end }}
         securityContext: *restricted
         volumeMounts: *tokenMounts
         readinessProbe:
@@ -93,6 +103,9 @@ spec:
         - --upstream=http://127.0.0.1:18789
         - --provider=oidc
         - --oidc-issuer-url={{ $v.issuer }}
+        {{- if $v.issuerCA }}
+        - --provider-ca-file=/config/issuer-ca.crt
+        {{- end }}
         - --client-id=openshell-dashboard
         - --client-secret-file=/dev/null
         - --code-challenge-method=S256

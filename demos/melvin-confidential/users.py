@@ -14,6 +14,7 @@ import uuid
 
 import yaml
 import inference
+import storage
 
 OWNERS = ("baseline", "confidential")
 GOV = "saw-demo-platform"
@@ -129,10 +130,10 @@ def values(d, owner, account, pins, revision):
             "kubernetes": {
             "gateway": {"image": pins["gatewayImage"]}, "supervisor": {"image": pins["supervisorImage"]},
             "workload": {"runtimeImage": pins["sandboxRuntimeImage"]},
-            "storage": {"className": "azurefile-csi", "gatewayClassName": "managed-csi",
+            "storage": {"className": storage.CLASS, "gatewayClassName": "managed-csi",
                         "gatewayClaimName": owner + "-gateway-sqlite"}}}},
         "policy": {"revision": revision, "values": {"network": {"publicHTTPS": True}}},
-        "audit": {"revision": revision, "values": {"storageClass": "azurefile-csi", "exchangeStorageClass": "azurefile-csi",
+        "audit": {"revision": revision, "values": {"storageClass": storage.CLASS, "exchangeStorageClass": storage.CLASS,
             "historyStorageClass": "managed-csi", "historyClaimName": owner + "-history-sqlite"}}}
     site = {"subject": account["subject"]}
     if owner == "confidential":
@@ -160,10 +161,19 @@ def values(d, owner, account, pins, revision):
 
 
 def install(d, owner, path, action="apply"):
+    environment = {**os.environ, "DEPLOYMENT_MODE": "kata" if owner == "confidential" else "container"}
+    if action != "delete":
+        # Owner-route readiness visits the cluster's self-signed ingress. Add
+        # its public CA to normal roots; never disable certificate verification.
+        public = base64.b64decode(d.get("secret", "router-certs-default", "openshift-ingress")["data"]["tls.crt"]).decode()
+        roots = "".join(ssl.DER_cert_to_PEM_cert(c) for c in ssl.create_default_context().get_ca_certs(binary_form=True))
+        trust = d.STATE / "cluster-trust.pem"
+        trust.write_text(roots + public)
+        trust.chmod(0o600)
+        environment["SSL_CERT_FILE"] = str(trust)
     result = d.run("uv", "run", "--project", str(d.ROOT), "--locked", "python", str(d.ROOT / "scripts/container-workspace.py"),
           action, "--values", str(path), "--name", owner, "--namespace", INSTALL,
-          env={**os.environ, "DEPLOYMENT_MODE": "kata" if owner == "confidential" else "container"},
-          cwd=str(d.ROOT), timeout=600, check=False)
+          env=environment, cwd=str(d.ROOT), timeout=1500, check=False)
     if result.returncode:
         d.save(owner + "-install-result.json", {"returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
         raise RuntimeError(owner + " workspace " + action + " failed; inspect private .state/" + owner + "-install-result.json")
@@ -240,6 +250,7 @@ def deploy(d):
     if not remote.startswith(revision + "\t"):
         raise RuntimeError("Demo commit is not the published demo branch tip")
     d.namespace(INSTALL)
+    storage.deploy(d)
     d.runtimeclass()
     governance(d, pins)
     owners = accounts(d)
@@ -263,5 +274,6 @@ def deploy(d):
             automatic.update(enabled=True, autoApprove=False, reference=reference, approvedProfiles={"custom-inference": digest})
             d.save(path.name, config)
             install(d, owner, path)
+    storage.capture_accounts(d)
     d.save("deployment-revision.json", {"revision": revision, "pins": pins})
     print("Both owner releases submitted with reviewed boundary and BOM digests. Run verify before recording.")

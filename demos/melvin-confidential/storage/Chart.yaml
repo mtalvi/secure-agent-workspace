@@ -1,0 +1,4 @@
+apiVersion: v2
+name: melvin-demo-storage
+version: 0.1.0
+description: Isolated POSIX filesystem validation for the Melvin demo

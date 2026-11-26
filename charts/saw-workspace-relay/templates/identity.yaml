@@ -1,11 +1,21 @@
 {{- if .Values.enabled }}
 {{- $v := .Values }}{{- $n := .Release.Name }}{{- $ui := .Release.Namespace }}
+{{- if contains "PRIVATE KEY" ($v.issuerCA | default "") }}{{ fail "issuerCA must contain public certificates only" }}{{ end }}
 {{- range $image := list $v.pythonImage $v.cliImage $v.proxyImage }}
 {{- if not (regexMatch "^.+@sha256:[0-9a-f]{64}$" $image) }}{{ fail "relay images must be digest pinned" }}{{ end }}
 {{- end }}
 {{- $revision := dict "values" $v "script" (.Files.Get "files/identity.py") | toJson | sha256sum | trunc 10 }}
 {{- $script := printf "%s-identity-%s" $n $revision }}
 {{- if or (eq $ui $v.keycloakNamespace) (eq $ui $v.trustedNamespace) (not (hasPrefix "https://" $v.issuer)) (not $v.clientID) (not $v.workspace) (not $v.installationID) }}{{ fail "dedicated UI namespace, HTTPS issuer and explicit client/workspace scope required" }}{{ end }}
+{{- if $v.issuerCA }}
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: {{ $n }}-issuer-ca, namespace: {{ $v.keycloakNamespace }}}
+data:
+  ca.crt: |
+{{ $v.issuerCA | indent 4 }}
+---
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -122,6 +132,9 @@ spec:
         command: [python3, /scripts/identity.py]
         securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
         env:
+        {{- if $v.issuerCA }}
+        - {name: SSL_CERT_FILE, value: /issuer-ca/ca.crt}
+        {{- end }}
         {{- if eq $action "delete" }}
         - {name: DELETE_BOUND_CLIENT, value: "true"}
         - {name: REGISTRATION, value: {{ $v.cleanupRegistration | quote }}}
@@ -142,11 +155,17 @@ spec:
         - {name: AUDIENCE, value: {{ $v.audience | quote }}}
         volumeMounts:
         - {name: script, mountPath: /scripts, readOnly: true}
+        {{- if $v.issuerCA }}
+        - {name: issuer-ca, mountPath: /issuer-ca, readOnly: true}
+        {{- end }}
         {{- if eq $action "create" }}
         - {name: kc, mountPath: /kc-provisioner, readOnly: true}
         {{- end }}
       volumes:
       - {name: script, configMap: {name: {{ $script }}}}
+      {{- if $v.issuerCA }}
+      - {name: issuer-ca, configMap: {name: {{ $n }}-issuer-ca}}
+      {{- end }}
       {{- if eq $action "create" }}
       - {name: kc, secret: {secretName: {{ required "realm-scoped Keycloak provisioner Secret required" $v.keycloakProvisionerSecret }}, defaultMode: 0440, items: [{key: issuer, path: issuer}, {key: client-id, path: client-id}, {key: client-secret, path: client-secret}]}}
       {{- end }}

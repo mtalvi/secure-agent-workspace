@@ -82,9 +82,18 @@ under `.state`; use those exact registrations for retries and cleanup.
 Keycloak ownership uses the immutable subject saved when the helper creates
 each account. This realm discards unmanaged user attributes. An existing
 username without the matching saved subject is never adopted.
-Gateway and audit-writer SQLite databases use separate `managed-csi` block
-claims; workspace and audit exchange files use `azurefile-csi`. The existing ingress certificate is explicitly
-trusted for gateway OIDC discovery through a public CA ConfigMap. Inference
+Gateway and audit-writer SQLite databases and the controller ledger use
+`managed-csi` block claims. Workspace, gate and audit exchange files use the
+demo-owned `saw-demo-nfs` class. Its disposable probe verifies POSIX permissions,
+ownership, hard links, rename and locking before enrollment. Azure Files SMB
+does not support the gate publisher's filesystem requirements. Azure rounds
+each NFS share up to 100 GiB; these demo shares are temporary. See
+[OpenShift Azure File NFS support](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/storage/using-container-storage-interface-csi)
+and [NFS filesystem semantics](https://learn.microsoft.com/en-us/azure/storage/files/files-nfs-protocol).
+The existing ingress certificate is explicitly
+trusted for gateway OIDC discovery and browser relay registration/login through
+public CA ConfigMaps, and for the installer's owner-route checks through an
+additional public CA bundle. Inference
 continues to use its publicly trusted certificate.
 
 An owner API rehearsal is available after enrollment:
