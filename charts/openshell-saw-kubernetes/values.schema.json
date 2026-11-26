@@ -243,6 +243,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "caBundle": {
+          "type": "string"
+        },
         "issuerUrl": {
           "type": "string"
         },

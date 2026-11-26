@@ -106,6 +106,14 @@ def test_gateway_block_claim_can_differ_from_shared_workspace_storage():
     assert config(docs)['drivers']['kubernetes']['workspace_storage_class'] == 'azurefile-csi'
 
 
+def test_oidc_public_ca_is_owned_only_when_explicitly_supplied():
+    docs = render('--set', 'oidc.caConfigMap=demo-oidc-ca', '--set-string', 'oidc.caBundle=public-ca-fixture')
+    assert docs['ConfigMap', 'demo-oidc-ca']['data']['ca.crt'].strip() == 'public-ca-fixture'
+    spec = docs['StatefulSet', 'saw-test-gateway']['spec']['template']['spec']
+    assert {'name': 'SSL_CERT_FILE', 'value': '/etc/openshell-tls/oidc-ca/ca.crt'} in spec['containers'][0]['env']
+    assert ('ConfigMap', 'demo-oidc-ca') not in render('--set', 'oidc.caConfigMap=demo-oidc-ca')
+
+
 def test_rbac_cannot_read_provider_secrets_or_control_other_namespaces():
     docs = render()
     role = docs['Role', 'saw-test-gateway']

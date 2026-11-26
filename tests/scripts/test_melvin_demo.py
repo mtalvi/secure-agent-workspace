@@ -96,7 +96,9 @@ def test_initdata_includes_guest_service_activation_without_trustee(demo):
     assert "default SetPolicyRequest := false" in contents["policy.rego"]
 
 
-def test_generated_site_passes_configuration_preflight(demo):
+def test_generated_site_passes_configuration_preflight(demo, monkeypatch):
+    import base64
+    monkeypatch.setattr(demo, "get", lambda *args: {"data": {"tls.crt": base64.b64encode(b"public-ca").decode()}})
     spec = importlib.util.spec_from_file_location("demo_preflight", ROOT / "charts/saw-portal-container/files/preflight.py")
     preflight = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(preflight)

@@ -20,6 +20,9 @@ spec:
         saw.redhat.com/kubernetes-api: allow
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/gateway-config.yaml") . | sha256sum }}
+        {{- if .Values.oidc.caBundle }}
+        checksum/oidc-ca: {{ .Values.oidc.caBundle | sha256sum }}
+        {{- end }}
     spec:
       serviceAccountName: {{ .Release.Name }}-gateway
       securityContext:

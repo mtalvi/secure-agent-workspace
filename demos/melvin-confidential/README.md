@@ -82,6 +82,22 @@ under `.state`; use those exact registrations for retries and cleanup.
 Keycloak ownership uses the immutable subject saved when the helper creates
 each account. This realm discards unmanaged user attributes. An existing
 username without the matching saved subject is never adopted.
+Gateway SQLite uses a separate `managed-csi` block claim; workspace and audit
+files use `azurefile-csi`. The existing ingress certificate is explicitly
+trusted for gateway OIDC discovery through a public CA ConfigMap. Inference
+continues to use its publicly trusted certificate.
+
+An owner API rehearsal is available after enrollment:
+
+```sh
+uv run --project ../.. --locked --with grpcio-tools==1.80.0 --with grpcio==1.80.0 --with protobuf==6.33.5 python owner-rehearsal.py baseline
+uv run --project ../.. --locked --with grpcio-tools==1.80.0 --with grpcio==1.80.0 --with protobuf==6.33.5 python owner-rehearsal.py confidential
+```
+
+This authenticates as the actual owner, verifies gateway TLS through a local
+API tunnel, checks the credential placeholder, and runs a fresh OpenClaw turn.
+It saves measured evidence only after success. It uses OpenShell's owner API,
+not Kubernetes exec, and does not replace browser layout/login rehearsal.
 
 Both owners use the same application, supervisor, sandbox-runtime and gateway
 images. Only the confidential owner uses `mode: kata`, the explicitly approved

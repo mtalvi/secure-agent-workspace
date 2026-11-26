@@ -1,0 +1,11 @@
+{{- if .Values.oidc.caBundle }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ required "oidc.caConfigMap is required with oidc.caBundle" .Values.oidc.caConfigMap }}
+  labels:
+    {{- include "saw-kubernetes.labels" . | nindent 4 }}
+data:
+  ca.crt: |
+{{ .Values.oidc.caBundle | indent 4 }}
+{{- end }}

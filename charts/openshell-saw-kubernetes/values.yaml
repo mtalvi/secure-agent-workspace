@@ -72,6 +72,8 @@ oidc:
   adminRole: openshell-admin
   userRole: openshell-user
   caConfigMap: ""
+  # Public PEM roots for a chart-owned caConfigMap; empty uses an existing map.
+  caBundle: ""
 route:
   enabled: true
   host: ""

@@ -123,7 +123,10 @@ def values(d, owner, account, pins, revision):
     defaults["automaticEnrollment"].update(image=pins["runtimeImage"], revision=revision, buildNamespace=INSTALL)
     defaults["stack"] = {
         "identity": {"revision": revision},
-        "gateway": {"revision": revision, "values": {"kubernetes": {
+        "gateway": {"revision": revision, "values": {
+            "oidc": {"caConfigMap": owner + "-oidc-ca", "caBundle": base64.b64decode(
+                d.get("secret", "router-certs-default", "openshift-ingress")["data"]["tls.crt"]).decode()},
+            "kubernetes": {
             "gateway": {"image": pins["gatewayImage"]}, "supervisor": {"image": pins["supervisorImage"]},
             "workload": {"runtimeImage": pins["sandboxRuntimeImage"]},
             "storage": {"className": "azurefile-csi", "gatewayClassName": "managed-csi",

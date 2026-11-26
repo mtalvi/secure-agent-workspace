@@ -1,0 +1,8 @@
+{
+  "openshell.proto": "fd8f78f439506a5264fcd960c6fcfd8eb7443780f03d879eaec5bcf3fc640970",
+  "datamodel.proto": "e50bd875a760f54b80269c65ee47984cae424fb623b7f59551ba62550c23e70b",
+  "options.proto": "8c14e8f255529165527e8e5a38068c965ad851db303f1926ed50ab184cbde65d",
+  "sandbox.proto": "0c2525eed548930dd2245a005224f1988f78b03ff25be9b4dabdb8c123956519",
+  "extension.proto": "60f28ee9dc846d41152f4db7e82a439c78d024786efaceb464900d1d1ad129ad",
+  "credential_driver.proto": "b71f239a1b7fa6b458c70874717e53b44cf385eef69f0009d3ab8c0f13ab4750"
+}
