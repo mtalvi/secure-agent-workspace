@@ -116,6 +116,9 @@ def values(d, owner, account, pins, revision):
     defaults = base["containerDefaults"]
     defaults["governanceNamespace"] = GOV
     defaults["auditReceipts"] = True
+    # The standalone installer checks the site before saw-users derives these
+    # same bindings from the profile catalog. Web search is disabled below.
+    defaults["credentialBindings"] = [{"secret": "inference", "key": "api_key", "type": "custom-inference"}]
     defaults["profileImageOverrides"] = {"custom-inference": {"notebook": pins["workloadImage"]}}
     defaults["automaticEnrollment"].update(image=pins["runtimeImage"], revision=revision, buildNamespace=INSTALL)
     defaults["stack"] = {

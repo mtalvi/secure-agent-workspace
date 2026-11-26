@@ -96,6 +96,18 @@ def test_initdata_includes_guest_service_activation_without_trustee(demo):
     assert "default SetPolicyRequest := false" in contents["policy.rego"]
 
 
+def test_generated_site_passes_configuration_preflight(demo):
+    spec = importlib.util.spec_from_file_location("demo_preflight", ROOT / "charts/saw-portal-container/files/preflight.py")
+    preflight = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(preflight)
+    pins = json.loads((DEMO / "pins.json").read_text())
+    config = demo.users.values(demo, "baseline", {"subject": "subject", "registration": "a" * 16,
+        "installationID": "installation"}, pins, "b" * 40)
+    assert all(preflight.configuration_facts(config["containerDefaults"]).values())
+    assert config["containerDefaults"]["credentialBindings"] == [
+        {"secret": "inference", "key": "api_key", "type": "custom-inference"}]
+
+
 def test_existing_keycloak_username_without_saved_subject_is_not_adopted(demo, monkeypatch):
     def request(method, path, data=None):
         assert method == "GET"
