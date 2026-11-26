@@ -79,6 +79,14 @@ spec:
         'saw-audit-forward' in variables.podLabels && 'pod-template-hash' in variables.podLabels &&
         variables.owners[0].name == variables.podLabels['saw-audit-forward'] + '-forward-' + variables.podLabels['pod-template-hash']
   validations:
+{{- range $role, $annotations := .Values.kataPodAnnotations }}
+{{- range $key, $value := $annotations }}
+    - expression: >-
+        variables.role != {{ $role | toJson }} || (has(object.metadata.annotations) &&
+        {{ $key | toJson }} in object.metadata.annotations && object.metadata.annotations[{{ $key | toJson }}] == {{ $value | toJson }})
+      message: The confidential Pod must retain its approved guest configuration.
+      reason: Forbidden
+{{- end }}{{- end }}
     - expression: >-
         (variables.gatewayClaim && !variables.runtimePod && !variables.preparation && !variables.forwarder) ||
         (variables.runtimePod && !variables.gatewayClaim && !variables.preparation && !variables.forwarder) ||

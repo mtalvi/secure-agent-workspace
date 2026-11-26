@@ -85,7 +85,11 @@ def once(x):
         verify_kata_platform(x, runtime_class, configs, nodes, api_readiness, cluster_version)
     cfg=dict(namespace=ns,namespaceUID=nsobj["uid"],ownerID=ident,mode=mode,trustedNamespace=t,
              governanceNamespace=x["governance"],gateway=u,slotKeys=sorted(x["targets"]))
-    if runtime: cfg["workloadRuntimeClass"]=runtime["name"]
+    if runtime:
+        cfg["workloadRuntimeClass"]=runtime["name"]
+        for role in ("workload", "supervisor"):
+            if x.get("kataPodAnnotations", {}).get(role):
+                cfg[role+"PodAnnotations"]=x["kataPodAnnotations"][role]
     cache={}
     def get(p):
         if p not in cache:cache[p]=api(p)
@@ -132,6 +136,11 @@ def once(x):
     if runtime:
         bindings.update(workloadRuntimeClass=runtime["name"],workloadRuntimeClassUID=runtime["uid"],
                         workloadRuntimeClassDigest=runtime["sha256"])
+        if runtime.get("handler", "kata") != "kata":
+            bindings["workloadRuntimeClassHandler"] = runtime["handler"]
+        for role in ("workload", "supervisor"):
+            if x.get("kataPodAnnotations", {}).get(role):
+                bindings[role+"PodAnnotations"]=x["kataPodAnnotations"][role]
     if x.get("credentialBindings"):
         bindings["credentialBindings"] = x["credentialBindings"]
     if x.get("customInferenceURL"):

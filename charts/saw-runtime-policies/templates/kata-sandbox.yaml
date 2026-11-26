@@ -19,6 +19,13 @@ spec:
         operations: [CREATE, UPDATE]
         resources: [sandboxes]
   validations:
+{{- range $key, $value := (.Values.kataPodAnnotations.workload | default dict) }}
+    - expression: >-
+        has(object.spec.podTemplate.metadata) && has(object.spec.podTemplate.metadata.annotations) &&
+        {{ $key | toJson }} in object.spec.podTemplate.metadata.annotations &&
+        object.spec.podTemplate.metadata.annotations[{{ $key | toJson }}] == {{ $value | toJson }}
+      message: The Sandbox must retain its approved confidential guest configuration.
+{{- end }}
     - expression: >-
         has(object.spec.podTemplate.spec.runtimeClassName) &&
         object.spec.podTemplate.spec.runtimeClassName == {{ .Values.workloadRuntimeClassName | toJson }}

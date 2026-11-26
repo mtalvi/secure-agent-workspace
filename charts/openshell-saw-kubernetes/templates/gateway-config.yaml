@@ -76,6 +76,12 @@ data:
     # second guest kernel.
     supervisor_runtime_class_name = {{ .Values.kubernetes.workload.runtimeClassName | quote }}
     {{- end }}
+    {{- range $role := list "workload" "supervisor" }}
+    {{- with (get $.Values.kubernetes $role).podAnnotations }}
+    {{- $entries := list }}
+    {{- range $key, $value := . }}{{ $entries = append $entries (printf "%s = %s" ($key | quote) ($value | quote)) }}{{ end }}
+    {{ $role }}_pod_annotations = { {{ join ", " $entries }} }
+    {{- end }}{{- end }}
     workspace_storage_class = {{ .Values.kubernetes.storage.className | quote }}
     workspace_default_storage_size = {{ .Values.kubernetes.storage.workspaceSize | quote }}
     allow_driver_config = true

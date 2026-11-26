@@ -12,6 +12,7 @@
 {{- $bootstrap := dict "registration" $r "installation" .Values.installationID "user" $g "subject" .Values.ownerSubject "governance" $gov "reference" ($a.reference | default dict) "autoApprove" $autoApprove "profileSHA256" ($s.selectedDigest | default $a.profileSHA256) "targets" $targets "gatewayVersion" $gatewayVersion "customInferenceURL" ($s.customInferenceURL | default "") "credentialBindings" ($s.credentialBindings | default list) "lifecycleVersion" ($s.lifecycleVersion | default 0) "modelInputs" ($s.modelInputs | default dict) "resources" $a.resources "domain" .Values.global.clusterDomain "auditReceipts" ($s.auditReceipts | default false) -}}
 {{- $scripts := (.Files.Glob "files/*.py").AsConfig -}}
 {{- with $s.kataRuntimeClass }}{{- $_ := set $bootstrap "kataRuntimeClass" . }}{{- end }}
+{{- with $s.kataPodAnnotations }}{{- $_ := set $bootstrap "kataPodAnnotations" . }}{{- end }}
 {{- $revision := dict "chartVersion" .Chart.Version "image" $a.image "config" $bootstrap "scripts" $scripts | toJson | sha256sum | trunc 12 -}}
 {{- $scriptName := printf "bootstrap-%s" $revision -}}
 apiVersion: v1

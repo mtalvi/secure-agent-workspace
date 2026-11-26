@@ -1,0 +1,6 @@
+host: ""
+llamaImage: ""
+pythonImage: ""
+modelURL: ""
+modelSHA256: ""
+initdata: ""

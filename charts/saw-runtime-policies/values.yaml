@@ -6,6 +6,8 @@ gatewayServiceAccount: ""
 sandboxServiceAccount: ""
 mode: container
 workloadRuntimeClassName: ""
+# Administrator-owned guest configuration, pinned independently for both VMs.
+kataPodAnnotations: {}
 network:
   # Required administrator allocation, unique among overlapping ANPs (0..99).
   priority: null

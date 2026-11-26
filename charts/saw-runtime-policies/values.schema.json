@@ -24,6 +24,13 @@
       ]
     },
     "workloadRuntimeClassName": {"type": "string"},
+    "kataPodAnnotations": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "workload": {"$ref": "#/definitions/guestAnnotations"},
+        "supervisor": {"$ref": "#/definitions/guestAnnotations"}
+      }
+    },
     "network": {
       "type": "object",
       "additionalProperties": false,
@@ -157,6 +164,13 @@
     "network"
   ],
   "definitions": {
+    "guestAnnotations": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "io.katacontainers.config.hypervisor.cc_init_data": {"type": "string", "minLength": 1, "maxLength": 32768},
+        "io.katacontainers.config.hypervisor.machine_type": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
     "selector": {
       "type": "object",
       "additionalProperties": false,

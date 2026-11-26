@@ -76,6 +76,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "podAnnotations": {"$ref": "#/definitions/guestAnnotations"},
             "image": {
               "type": "string"
             }
@@ -88,6 +89,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "podAnnotations": {"$ref": "#/definitions/guestAnnotations"},
             "image": {
               "type": "string"
             },
@@ -284,5 +286,14 @@
     "oidc",
     "route"
   ],
+  "definitions": {
+    "guestAnnotations": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "io.katacontainers.config.hypervisor.cc_init_data": {"type": "string", "minLength": 1, "maxLength": 32768},
+        "io.katacontainers.config.hypervisor.machine_type": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    }
+  },
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

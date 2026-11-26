@@ -1,0 +1,6 @@
+# The peer VM starts AA only after /run/peerpod/aa.toml exists. CDH and Kata
+# start after AA. No token provider or Trustee endpoint is configured here.
+[token_configs]
+
+[eventlog_config]
+init_pcr = 17

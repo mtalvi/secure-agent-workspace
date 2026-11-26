@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen
+  labels: {saw.redhat.com/demo: melvin-confidential}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: qwen}
+  template:
+    metadata:
+      labels: {app: qwen, saw.redhat.com/demo: melvin-confidential}
+      annotations:
+        io.katacontainers.config.hypervisor.machine_type: Standard_DC8as_v5
+        io.katacontainers.config.hypervisor.cc_init_data: {{ required "initdata required" .Values.initdata | quote }}
+    spec:
+      runtimeClassName: kata-cc
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: model
+          image: {{ .Values.pythonImage | quote }}
+          command: [python3, -c]
+          args:
+            - |
+              import hashlib, os, urllib.request
+              target = '/model/qwen.gguf'
+              h = hashlib.sha256()
+              with urllib.request.urlopen(os.environ['MODEL_URL'], timeout=120) as source, open(target, 'wb') as dest:
+                  while chunk := source.read(8 * 1024 * 1024):
+                      dest.write(chunk)
+                      h.update(chunk)
+              if h.hexdigest() != os.environ['MODEL_SHA256']:
+                  os.unlink(target)
+                  raise SystemExit('Model checksum mismatch')
+              print('Verified Qwen model SHA-256:', h.hexdigest(), flush=True)
+          env:
+            - {name: MODEL_URL, value: {{ .Values.modelURL | quote }}}
+            - {name: MODEL_SHA256, value: {{ .Values.modelSHA256 | quote }}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: model, mountPath: /model}]
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 512Mi}
+      containers:
+        - name: server
+          image: {{ .Values.llamaImage | quote }}
+          args:
+            - --model
+            - /model/qwen.gguf
+            - --alias
+            - Qwen3-4B
+            - --ctx-size
+            - "32768"
+            - --parallel
+            - "1"
+            - --threads
+            - "8"
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8443"
+            - --jinja
+            - --chat-template-kwargs
+            - '{"enable_thinking":false}'
+            - --api-key-file
+            - /credentials/keys
+            - --ssl-key-file
+            - /tls/tls.key
+            - --ssl-cert-file
+            - /tls/tls.crt
+            - --no-webui
+          ports: [{name: https, containerPort: 8443}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: "2", memory: 6Gi}
+            limits: {cpu: "8", memory: 24Gi}
+          startupProbe:
+            # Kubernetes HTTPS probes skip certificate verification. Use a
+            # transport probe; demo.sh verify checks real HTTPS/model readiness.
+            tcpSocket: {port: https}
+            periodSeconds: 10
+            failureThreshold: 120
+          readinessProbe:
+            tcpSocket: {port: https}
+            periodSeconds: 10
+          volumeMounts:
+            - {name: model, mountPath: /model, readOnly: true}
+            - {name: keys, mountPath: /credentials, readOnly: true}
+            - {name: tls, mountPath: /tls, readOnly: true}
+      volumes:
+        - {name: model, emptyDir: {sizeLimit: 4Gi}}
+        - {name: keys, secret: {secretName: inference-auth, defaultMode: 288}}
+        - {name: tls, secret: {secretName: inference-tls, defaultMode: 288}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen
+  labels: {saw.redhat.com/demo: melvin-confidential}
+spec:
+  selector: {app: qwen}
+  ports: [{name: https, port: 8443, targetPort: https}]

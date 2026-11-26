@@ -1,0 +1,15 @@
+{
+  "baseCommit": "c44caef718307454d1d92f3b5d43139d485b65ba",
+  "gatewaySource": "c2775b8df05619cdd57cb354ea8cd829ec79ee40",
+  "gatewayImage": "ghcr.io/mtalvi/saw-melvin-gateway@sha256:ecb99e17f20de51e2704496202b949b34364f54af48b8563b28935fcf6e4288a",
+  "llamaImage": "ghcr.io/ggml-org/llama.cpp@sha256:b24873ae66a4732e0b4b66dd7dc658066ccad6e8c63524278e92eebc767aacbe",
+  "pythonImage": "docker.io/library/python@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89",
+  "runtimeImage": "ghcr.io/mtalvi/saw-melvin-runtime@sha256:0ad74d6723ef2ce73976f1321b4b1573f7052b84e47722ae4588817bfb23eae2",
+  "governanceImage": "ghcr.io/sauagarwa/governance-interceptor@sha256:890df5d17388d98330a240625a36e4ce70810b4ab3bccc28d0f49919c25f5127",
+  "modelURL": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf",
+  "modelSHA256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+  "model": "Qwen3-4B",
+  "workloadImage": "ghcr.io/sauagarwa/saw-openclaw@sha256:05f17f3872f864e44231fb3cea30cd4dd2ba9887b382a67b261f068a234b79a2",
+  "supervisorImage": "quay.io/opendatahub/odh-openshell-supervisor@sha256:c2c8e9d3d19a1612074df0f637078064cff45b92d35c74b116a72fb503b3c1bc",
+  "sandboxRuntimeImage": "ghcr.io/sauagarwa/saw-openshell-sandbox@sha256:402b9727a690e8c8a10fb10c0cee21e96ea034b652d6c7d5b3f06eba916c9881"
+}

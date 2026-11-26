@@ -117,6 +117,11 @@ def verify(config, plan, get):
                 or driver.get("default_runtime_class_name") != runtime
                 or driver.get("supervisor_runtime_class_name") != runtime):
             raise BoundaryError("WrongWorkloadPlacement")
+        for role in ("workload", "supervisor"):
+            expected = config.get(role + "PodAnnotations", {})
+            planned = plan.get("runtimeClass", {}).get("podAnnotations", {}).get(role, expected)
+            if driver.get(role + "_pod_annotations", {}) != expected or planned != expected:
+                raise BoundaryError("WrongGuestPolicy:" + role)
         checks.append("sandboxPlacement")
     for key in checks:
         vap = observed[key]

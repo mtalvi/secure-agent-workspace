@@ -1,0 +1,6 @@
+FROM localhost/saw-melvin-gateway-builder:demo
+COPY tests.rs /tmp/demo-tests.rs
+RUN python3 -c 'from pathlib import Path; p=Path("crates/openshell-driver-kubernetes/src/driver.rs"); s=p.read_text(); i=s.rfind("}"); p.write_text(s[:i]+"include!(\"/tmp/demo-tests.rs\");\n"+s[i:])'
+RUN cargo test --locked --release --package openshell-gateway --package openshell-driver-kubernetes \
+    --no-default-features --features openshell-gateway/defaults-without-telemetry,openshell-gateway/vendored-z3 \
+    --lib demo_ -- --nocapture

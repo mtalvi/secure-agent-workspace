@@ -93,3 +93,27 @@ def test_kata_review_includes_sandbox_admission_and_gateway_placement(installati
     gateway["gateway.toml"] = '[openshell.drivers.kubernetes]\ndefault_runtime_class_name = "saw-kata"'
     with pytest.raises(BoundaryError, match="WrongWorkloadPlacement"):
         capture(config, resources.__getitem__)
+
+
+def test_guest_annotation_drift_blocks_enrollment_for_either_role(installation):
+    import json
+    config, resources, _, _ = installation
+    annotations = {"io.katacontainers.config.hypervisor.cc_init_data": "reviewed-initdata",
+                   "io.katacontainers.config.hypervisor.machine_type": "Standard_DC4as_v5"}
+    config = dict(config, mode="kata", workloadRuntimeClass="kata-cc",
+                  workloadPodAnnotations=annotations, supervisorPodAnnotations=annotations)
+    refs = objects(config)
+    for key in ("sandboxPlacement", "sandboxPlacementBinding"):
+        resources[refs[key][0]] = {"metadata": {"uid": key, "generation": 1}, "spec": {}}
+    resources[refs["sandboxPlacement"][0]]["status"] = {"observedGeneration": 1, "typeChecking": {}}
+    table = "{ " + ", ".join(json.dumps(k) + " = " + json.dumps(v) for k,v in annotations.items()) + " }"
+    text = ('[openshell.drivers.kubernetes]\ndefault_runtime_class_name = "kata-cc"\n'
+            'supervisor_runtime_class_name = "kata-cc"\n')
+    gateway = resources[refs["gatewayConfig"][0]]["data"]
+    full = text + "workload_pod_annotations = " + table + "\nsupervisor_pod_annotations = " + table
+    gateway["gateway.toml"] = full
+    capture(config, resources.__getitem__)
+    for role in ("workload", "supervisor"):
+        gateway["gateway.toml"] = full.replace(role + "_pod_annotations = " + table, role + "_pod_annotations = {}")
+        with pytest.raises(BoundaryError, match="WrongGuestPolicy:" + role):
+            capture(config, resources.__getitem__)

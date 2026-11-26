@@ -1,0 +1,4 @@
+apiVersion: v2
+name: melvin-inference
+version: 0.1.0
+description: Temporary confidential CPU Qwen server with in-guest TLS

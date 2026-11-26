@@ -1,0 +1,11 @@
+# Public, digest-pinned images only. No KBS resources or registry credentials.
+socket = "unix:///run/confidential-containers/cdh.sock"
+credentials = []
+
+[kbc]
+name = "cc_kbc"
+url = ""
+
+# Explicit defaults avoid inheriting image-policy/credential URIs from a VM
+# kernel command line. Trustee delivery is intentionally future work.
+[image]

@@ -164,7 +164,8 @@ def check_runtime_class(approved, observed):
         raise PreflightError("RuntimeClassNameMismatch")
     if not approved.get("uid") or metadata.get("uid") != approved["uid"]:
         raise PreflightError("RuntimeClassIdentityMismatch")
-    if observed.get("handler") != "kata":
+    expected_handler = approved.get("handler", "kata")
+    if expected_handler not in {"kata", "kata-remote"} or observed.get("handler") != expected_handler:
         raise PreflightError("RuntimeClassHandlerMismatch")
     labels = metadata.get("labels") or {}
     if not isinstance(labels, dict):
@@ -434,6 +435,8 @@ def verify_kata_platform(site, runtime_class, kata_configs, nodes, api_readiness
         raise PreflightError("KataConfigNotReady")
     ready_configs = [item for item in kata_configs
                      if isinstance(item, dict) and kata_config_ready(item)]
+    if (approved or {}).get("handler", "kata") == "kata-remote":
+        ready_configs = [item for item in ready_configs if item.get("spec", {}).get("enablePeerPods") is True]
     if not ready_configs:
         raise PreflightError("KataConfigNotReady")
     installed_nodes = {name for item in ready_configs for name in kata_config_installed_nodes(item)}

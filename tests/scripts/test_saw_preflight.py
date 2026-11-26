@@ -35,6 +35,19 @@ def test_runtime_approval_passes_for_the_same_uid_handler_and_placement():
     assert preflight.check_runtime_class(approved, observed)
 
 
+def test_remote_handler_needs_explicit_approval_and_still_pins_placement():
+    observed, approved = runtime_class()
+    observed["handler"] = "kata-remote"
+    approved["sha256"] = preflight.runtime_placement_digest(observed)
+    with pytest.raises(preflight.PreflightError, match="RuntimeClassHandlerMismatch"):
+        preflight.check_runtime_class(approved, observed)
+    approved["handler"] = "kata-remote"
+    assert preflight.check_runtime_class(approved, observed)
+    observed["scheduling"]["nodeSelector"]["workload"] = "unapproved"
+    with pytest.raises(preflight.PreflightError, match="RuntimeClassPlacementChanged"):
+        preflight.check_runtime_class(approved, observed)
+
+
 @pytest.mark.parametrize(("change", "reason"), [
     ("missing", "RuntimeClassUnavailable"),
     ("name", "RuntimeClassNameMismatch"),

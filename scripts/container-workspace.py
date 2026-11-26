@@ -298,7 +298,14 @@ def preflight(config, namespace, user):
             placement = (runtime.get("scheduling") or {}).get("nodeSelector") or {}
             selector = ",".join(f"{key}={value}" for key, value in sorted(placement.items()))
             try:
-                kata_worker_check.check(run("oc", "whoami", "--show-server").strip(), selector)
+                if approval.get("handler", "kata") == "kata":
+                    kata_worker_check.check(run("oc", "whoami", "--show-server").strip(), selector)
+                else:
+                    feature = get("configmap", "osc-feature-gates", "openshift-sandboxed-containers-operator")
+                    peer = get("configmap", "peer-pods-cm", "openshift-sandboxed-containers-operator")
+                    if ((feature or {}).get("data", {}).get("confidential") != "true"
+                            or (peer or {}).get("data", {}).get("DISABLECVM") != "false"):
+                        raise InstallError("Confidential peer pods are not enabled")
             except Exception:
                 raise InstallError("Kata preflight failed: KataWorkersNotReady") from None
             observations.update(osc=True, kataConfig=True, workers=True, runtimeClass=True)

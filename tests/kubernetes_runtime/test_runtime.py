@@ -642,6 +642,27 @@ def test_kata_rejects_incomplete_review(source, bad):
         compile_profile(profile, config)
 
 
+def test_remote_kata_requires_both_approved_guest_policies(source):
+    profile, config = source
+    config.update(mode="kata", workloadRuntimeClass="kata-cc",
+                  workloadRuntimeClassUID=str(uuid.uuid4()), workloadRuntimeClassDigest="a" * 64,
+                  workloadRuntimeClassHandler="kata-remote")
+    annotations = {"io.katacontainers.config.hypervisor.cc_init_data": "reviewed-initdata",
+                   "io.katacontainers.config.hypervisor.machine_type": "Standard_DC4as_v5"}
+    with pytest.raises(ContractError, match="both roles"):
+        compile_profile(profile, config)
+    config.update(workloadPodAnnotations=annotations, supervisorPodAnnotations=dict(annotations))
+    plan = compile_profile(profile, config)
+    assert plan["runtimeClass"]["handler"] == "kata-remote"
+    assert plan["runtimeClass"]["podAnnotations"]["workload"] == annotations
+    for change in ({"workloadPodAnnotations": {}}, {"supervisorPodAnnotations": {"unapproved": "value"}},
+                   {"workloadRuntimeClassHandler": "kata"}, {"workloadRuntimeClassHandler": "runc"}):
+        with pytest.raises(ContractError):
+            compile_profile(profile, dict(config, **change))
+    with pytest.raises(ContractError):
+        compile_profile(profile, dict(config, mode="container"))
+
+
 def test_live_attachment_verifier_checks_runtimeclass_drift(resources):
     plan, namespace, pvc, _ = resources
     placement = {"handler": "kata", "overhead": {"podFixed": {"memory": "256Mi"}},

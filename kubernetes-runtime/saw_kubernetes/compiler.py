@@ -254,7 +254,8 @@ def compile_profile_files(files, config, gateway_profiles=None):
         # status; do not accidentally turn that into a profile/secret echo.
         raise ContractError("profile documents fail shared SAW schema or semantic validation") from None
     mapping(config, {"ownerID", "namespace", "namespaceUID", "ownerSubject", "mode",
-                     "workloadRuntimeClass", "workloadRuntimeClassUID", "workloadRuntimeClassDigest", "bindings",
+                     "workloadRuntimeClass", "workloadRuntimeClassUID", "workloadRuntimeClassDigest",
+                     "workloadRuntimeClassHandler", "workloadPodAnnotations", "supervisorPodAnnotations", "bindings",
                      "approvedCredentialFreeProviders", "gatewayVersion", "retiredSandboxes", "modelInputs", "credentialBindings", "customInferenceURL"},
             {"ownerID", "namespace", "namespaceUID", "ownerSubject", "mode", "bindings",
              "approvedCredentialFreeProviders", "gatewayVersion"}, "administrator configuration")
@@ -272,7 +273,8 @@ def compile_profile_files(files, config, gateway_profiles=None):
     runtime = config.get("workloadRuntimeClass", "")
     runtime_ref = {"name": runtime, "uid": config.get("workloadRuntimeClassUID", "")}
     if mode == "container":
-        if any(runtime_ref.values()) or "workloadRuntimeClassDigest" in config:
+        if any(runtime_ref.values()) or any(k in config for k in ("workloadRuntimeClassDigest",
+                "workloadRuntimeClassHandler", "workloadPodAnnotations", "supervisorPodAnnotations")):
             raise ContractError("container mode must not select a RuntimeClass")
     elif mode == "kata":
         name(runtime, "workload RuntimeClass", 63)
@@ -286,6 +288,19 @@ def compile_profile_files(files, config, gateway_profiles=None):
         if not isinstance(sha, str) or not re.fullmatch("[a-f0-9]{64}", sha):
             raise ContractError("kata requires a reviewed RuntimeClass digest")
         runtime_ref["sha256"] = sha
+        handler = config.get("workloadRuntimeClassHandler", "kata")
+        if handler not in {"kata", "kata-remote"}:
+            raise ContractError("unsupported approved Kata handler")
+        annotations = {role: config.get(role + "PodAnnotations", {}) for role in ("workload", "supervisor")}
+        if handler == "kata-remote":
+            allowed = {"io.katacontainers.config.hypervisor.cc_init_data", "io.katacontainers.config.hypervisor.machine_type"}
+            if any(not isinstance(value, dict) or set(value) != allowed
+                   or any(not isinstance(v, str) or not v or len(v) > 32768 for v in value.values())
+                   for value in annotations.values()):
+                raise ContractError("confidential peer pods require approved initdata and machine type for both roles")
+            runtime_ref.update(handler=handler, podAnnotations=annotations)
+        elif any(annotations.values()):
+            raise ContractError("local Kata cannot carry peer-pod annotations")
     else:
         raise ContractError("this adapter only accepts container or kata")
     approved = config["approvedCredentialFreeProviders"]

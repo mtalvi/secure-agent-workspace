@@ -195,7 +195,9 @@ def previous_child(application, appset, owner):
 def validate_runtime_placement(mode, site):
     runtime = site.get("kataRuntimeClass")
     if mode == "kata":
-        if (not isinstance(runtime, dict) or set(runtime) != {"name", "uid", "sha256"}
+        if (not isinstance(runtime, dict) or set(runtime) - {"name", "uid", "sha256", "handler"}
+                or not {"name", "uid", "sha256"} <= set(runtime)
+                or runtime.get("handler", "kata") not in {"kata", "kata-remote"}
                 or not re.fullmatch(r"[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?", str(runtime["name"]))
                 or not re.fullmatch(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", str(runtime["uid"]))
                 or not re.fullmatch(r"[a-f0-9]{64}", str(runtime["sha256"]))):

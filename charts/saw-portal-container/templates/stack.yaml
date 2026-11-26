@@ -108,6 +108,10 @@ the identical resolved values instead of its own chart defaults. */}}
 {{- $gateway := fromJson $values }}
 {{- $_ := set $gateway "deployment" (dict "mode" "kata") }}
 {{- $_ := set $gateway.kubernetes.workload "runtimeClassName" $site.kataRuntimeClass.name }}
+{{- range $role := list "workload" "supervisor" }}
+{{- with (get ($site.kataPodAnnotations | default dict) $role) }}
+{{- $_ := set (get $gateway.kubernetes $role) "podAnnotations" . }}
+{{- end }}{{- end }}
 {{- $values = toJson $gateway }}
 {{- end }}
 {{- if eq $key "policy" }}
@@ -115,6 +119,7 @@ the identical resolved values instead of its own chart defaults. */}}
 {{- if $site.kataRuntimeClass }}
 {{- $_ := set $policy "mode" "kata" }}
 {{- $_ := set $policy "workloadRuntimeClassName" $site.kataRuntimeClass.name }}
+{{- with $site.kataPodAnnotations }}{{- $_ := set $policy "kataPodAnnotations" . }}{{- end }}
 {{- end }}
 {{- $gw := $stack.gateway.values.kubernetes }}
 {{- $slots := dict }}

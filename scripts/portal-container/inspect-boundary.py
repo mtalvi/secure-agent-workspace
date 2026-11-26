@@ -24,6 +24,7 @@ def main():
     output.add_argument("--show-objects", action="store_true", help="print the underlying public specs/data for review")
     output.add_argument("--profile-digest", action="store_true", help="print the rendered public BOM data digest for review")
     parser.add_argument("--kata-runtime-class", help="review the Kata workload boundary for this class")
+    parser.add_argument("--kata-annotations", type=Path, help="administrator JSON map of workload/supervisor guest annotations")
     a = parser.parse_args()
     if not re.fullmatch("[a-z0-9]([-a-z0-9]{0,17}[a-z0-9])?", a.owner) or not re.fullmatch("[a-f0-9]{16}", a.registration):
         parser.error("invalid owner or registration")
@@ -53,6 +54,13 @@ def main():
         if not re.fullmatch("[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?", a.kata_runtime_class):
             parser.error("invalid RuntimeClass")
         config.update(mode="kata", workloadRuntimeClass=a.kata_runtime_class)
+        if a.kata_annotations:
+            annotations = json.loads(a.kata_annotations.read_text())
+            if set(annotations) != {"workload", "supervisor"}:
+                parser.error("annotations must contain both runtime roles")
+            config.update({role + "PodAnnotations": annotations[role] for role in annotations})
+    elif a.kata_annotations:
+        parser.error("guest annotations require a Kata RuntimeClass")
     capture(config, read)  # same health, admission and network checks as enrollment
     if a.profile_digest:
         print(fingerprint(read(f"/api/v1/namespaces/{ns}/configmaps/saw-bom-profiles")["data"]))
