@@ -110,7 +110,7 @@ def rehearse(owner):
         raise RuntimeError("Owner workload is not Ready")
     with client(owner) as (stub, metadata):
         items = stub.ListSandboxes(pb.ListSandboxesRequest(
-            workspace_scope=dm.WorkspaceSelector(all_workspaces=dm.AllWorkspaces())), metadata=metadata, timeout=15).sandboxes
+            workspace_scope=dm.WorkspaceSelector(workspace="default")), metadata=metadata, timeout=15).sandboxes
         if len(items) != 1:
             raise RuntimeError("Expected one demo sandbox for this owner")
         sandbox = items[0]
@@ -144,7 +144,8 @@ def rehearse(owner):
 export HOME=/sandbox/workspace OPENCLAW_HOME=/sandbox/workspace
 export OPENCLAW_CONFIG_PATH=/sandbox/workspace/.openclaw/openclaw.json
 export TMPDIR=/sandbox/workspace/.openclaw/state SQLITE_TMPDIR=/sandbox/workspace/.openclaw/state
-export OPENCLAW_GATEWAY_TOKEN="$(node -e 'process.stdout.write(require(process.env.OPENCLAW_CONFIG_PATH).gateway.auth.token)')"
+OPENCLAW_GATEWAY_PASSWORD="$(node -e 'const a=require(process.env.OPENCLAW_CONFIG_PATH).gateway.auth;if(!a.password)process.exit(1);process.stdout.write(a.password)')"
+export OPENCLAW_GATEWAY_PASSWORD
 openclaw agent --agent main --message "$1"
 """
         started = time.monotonic()
