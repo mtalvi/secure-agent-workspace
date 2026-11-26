@@ -46,7 +46,8 @@ spec:
           volumeMounts: [{name: model, mountPath: /model}]
           resources:
             requests: {cpu: 100m, memory: 256Mi}
-            limits: {cpu: "1", memory: 512Mi}
+            # The downloaded GGUF pages in tmpfs count toward this container.
+            limits: {cpu: "1", memory: 4Gi}
       containers:
         - name: server
           image: {{ .Values.llamaImage | quote }}
@@ -96,7 +97,9 @@ spec:
             - {name: keys, mountPath: /credentials, readOnly: true}
             - {name: tls, mountPath: /tls, readOnly: true}
       volumes:
-        - {name: model, emptyDir: {sizeLimit: 4Gi}}
+        # Memory-backed emptyDir is shared by the init/server containers inside
+        # the peer VM, without copying a host-backed directory through Kata.
+        - {name: model, emptyDir: {medium: Memory, sizeLimit: 4Gi}}
         - {name: keys, secret: {secretName: inference-auth, defaultMode: 288}}
         - {name: tls, secret: {secretName: inference-tls, defaultMode: 288}}
 ---

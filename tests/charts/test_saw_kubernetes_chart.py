@@ -95,6 +95,17 @@ def test_existing_claim_is_never_created_or_owned():
     assert next(v for v in volumes if v['name'] == 'data')['persistentVolumeClaim']['claimName'] == 'retained-gateway'
 
 
+def test_gateway_block_claim_can_differ_from_shared_workspace_storage():
+    docs = render('--set', 'kubernetes.storage.className=azurefile-csi',
+                  '--set', 'kubernetes.storage.gatewayClassName=managed-csi',
+                  '--set', 'kubernetes.storage.gatewayClaimName=demo-gateway-sqlite')
+    assert docs['PersistentVolumeClaim', 'demo-gateway-sqlite']['spec']['storageClassName'] == 'managed-csi'
+    assert ('PersistentVolumeClaim', 'saw-test-gateway-data') not in docs
+    volumes = docs['StatefulSet', 'saw-test-gateway']['spec']['template']['spec']['volumes']
+    assert next(v for v in volumes if v['name'] == 'data')['persistentVolumeClaim']['claimName'] == 'demo-gateway-sqlite'
+    assert config(docs)['drivers']['kubernetes']['workspace_storage_class'] == 'azurefile-csi'
+
+
 def test_rbac_cannot_read_provider_secrets_or_control_other_namespaces():
     docs = render()
     role = docs['Role', 'saw-test-gateway']

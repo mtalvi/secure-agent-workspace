@@ -138,6 +138,14 @@
             "className": {
               "type": "string"
             },
+            "gatewayClassName": {
+              "type": "string"
+            },
+            "gatewayClaimName": {
+              "type": "string",
+              "maxLength": 253,
+              "pattern": "^$|^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+            },
             "gatewaySize": {
               "type": "string",
               "pattern": "^[1-9][0-9]*(Mi|Gi|Ti)$"

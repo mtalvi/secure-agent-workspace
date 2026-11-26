@@ -39,6 +39,10 @@ kubernetes:
     # Empty uses the cluster's default StorageClass, as upstream OpenShell
     # does for the gateway and workspace volumes. Use a block-backed class.
     className: ""
+    # Optional gateway-only overrides, for SQLite on block storage while
+    # workspace volumes use a shared filesystem. Empty preserves defaults.
+    gatewayClassName: ""
+    gatewayClaimName: ""
     gatewaySize: 5Gi
     workspaceSize: 20Gi
     # Prefer an independently owned retained claim for existing state.

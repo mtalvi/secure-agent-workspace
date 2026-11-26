@@ -37,7 +37,9 @@ default UpdateRoutesRequest := true
 default WaitProcessRequest := true
 default WriteStreamRequest := true
 default CreateContainerRequest := true
-default ReadStreamRequest := false
+# Container logs remain available; the recording claim is specifically about
+# host-driven exec. Applications must not log credentials.
+default ReadStreamRequest := true
 default CopyFileRequest := false
 default SetPolicyRequest := false
 default ExecProcessRequest := false

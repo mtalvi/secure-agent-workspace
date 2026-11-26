@@ -99,7 +99,7 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: {{ $k.storage.existingGatewayClaim | default (printf "%s-gateway-data" .Release.Name) | quote }}
+            claimName: {{ $k.storage.existingGatewayClaim | default $k.storage.gatewayClaimName | default (printf "%s-gateway-data" .Release.Name) | quote }}
         - {name: config, configMap: {name: {{ .Release.Name }}-gateway-config}}
         - {name: server-tls, secret: {secretName: {{ $k.identity.serverTlsSecret | quote }}}}
         - name: client-ca
@@ -124,13 +124,13 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ .Release.Name }}-gateway-data
+  name: {{ $k.storage.gatewayClaimName | default (printf "%s-gateway-data" .Release.Name) }}
   annotations:
     helm.sh/resource-policy: keep
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes: [ReadWriteOnce]
-  {{- with $k.storage.className }}
+  {{- with ($k.storage.gatewayClassName | default $k.storage.className) }}
   storageClassName: {{ . | quote }}
   {{- end }}
   resources:

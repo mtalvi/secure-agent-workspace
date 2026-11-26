@@ -126,7 +126,8 @@ def values(d, owner, account, pins, revision):
         "gateway": {"revision": revision, "values": {"kubernetes": {
             "gateway": {"image": pins["gatewayImage"]}, "supervisor": {"image": pins["supervisorImage"]},
             "workload": {"runtimeImage": pins["sandboxRuntimeImage"]},
-            "storage": {"className": "azurefile-csi"}}}},
+            "storage": {"className": "azurefile-csi", "gatewayClassName": "managed-csi",
+                        "gatewayClaimName": owner + "-gateway-sqlite"}}}},
         "policy": {"revision": revision, "values": {"network": {"publicHTTPS": True}}},
         "audit": {"revision": revision, "values": {"storageClass": "azurefile-csi", "exchangeStorageClass": "azurefile-csi"}}}
     site = {"subject": account["subject"]}
@@ -166,6 +167,23 @@ def install(d, owner, path, action="apply"):
 
 
 def review(d, owner, account):
+    # ApplicationSet may reconcile before its bootstrap Secret exists. Request
+    # a fresh reconciliation only for this release after identity provisioning.
+    projector_owner = hashlib.sha256((INSTALL + "/workspace-" + owner).encode()).hexdigest()[:20]
+    projector = "saw-projector-" + projector_owner
+    for _ in range(30):
+        identity = d.get("secret", projector, "vp-gitops")
+        if identity:
+            appset = d.get("applicationset", projector, "vp-gitops")
+            if any(obj["metadata"].get("labels", {}).get("saw.redhat.com/projector-owner") != projector_owner
+                   for obj in (identity, appset or {"metadata": {}})):
+                raise RuntimeError("Projector identity does not belong to the demo release")
+            d.oc("annotate", "applicationset", projector, "-n", "vp-gitops",
+                 "argocd.argoproj.io/application-set-refresh=true", "--overwrite")
+            break
+        time.sleep(2)
+    else:
+        raise RuntimeError("Demo projector identity initialization did not complete")
     args = ["uv", "run", "--project", str(d.ROOT), "--locked", "python", str(d.ROOT / "scripts/portal-container/inspect-boundary.py"),
             "--owner", owner, "--registration", account["registration"], "--installation-id", account["installationID"],
             "--governance-namespace", GOV, "--api-server", d.API]

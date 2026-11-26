@@ -25,6 +25,9 @@ The `kata-cc` name is a demo-owned alias of `kata-remote`. Verification must
 correlate each pod UID with its PeerPod and actual Azure `ConfidentialVM`, and
 show the exec denial comes from the guest policy. Trustee credential release,
 tampering/attestation rejection, and email/chat/calendar remain future work.
+The guest policy permits container logs but denies `ExecProcessRequest` and
+`SetPolicyRequest`. This is an exec demonstration, not a claim that administrators
+cannot observe application logs. Applications must never log credentials.
 
 ## Preparation
 
@@ -60,6 +63,9 @@ temporary HTTP responder serves the challenge on port 80. After issuance, the
 Route uses passthrough TLS to llama.cpp inside the confidential peer pod. No
 router certificate or insecure TLS client bypass is used for inference.
 The pinned model loader verifies the GGUF SHA-256 before starting the server.
+The model uses a 4 GiB memory-backed `emptyDir` inside the guest; the loader's
+memory limit includes those file pages. This avoids a host-directory copy for
+the large GGUF. See [confidential temporary storage](https://confidentialcontainers.org/docs/features/protected-storage/confidential-emptydir/).
 The server uses a 32K context, one request slot, eight CPU threads, Jinja tool
 formatting and disabled thinking. Keys are generated locally and supplied as
 mounted files. Do not expose `.state/inference-keys.json` in a recording.
