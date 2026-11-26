@@ -80,6 +80,48 @@ def inference_secret_name(d, control):
     return names[0]
 
 
+def admission(d):
+    """Exercise the real policies without persisting any modified object."""
+    expected = d.load("guest-annotations.json")
+    records = []
+
+    def reject(kind, obj, path, original, changed, reason, label):
+        meta = obj["metadata"]
+        args = ("patch", kind, meta["name"], "-n", "saw-confidential", "--dry-run=server", "--type=json")
+        patch = [{"op": "test", "path": "/metadata/uid", "value": meta["uid"]},
+                 {"op": "replace", "path": path, "value": original}]
+        control = d.oc(*args, "-p", json.dumps(patch), check=False)
+        if control.returncode:
+            raise RuntimeError("Unchanged admission dry-run failed: " + label)
+        patch[1]["value"] = changed
+        denied = d.oc(*args, "-p", json.dumps(patch), check=False)
+        message = denied.stdout + denied.stderr
+        if not denied.returncode or reason not in message or "ValidatingAdmissionPolicy" not in message:
+            raise RuntimeError("Admission did not reject the specific forbidden change: " + label)
+        records.append({"check": label, "objectUID": meta["uid"], "unchangedAccepted": True,
+                        "rejected": True, "message": message[:2500]})
+
+    for role in ("workload", "supervisor"):
+        current = pod(d, "confidential", role)
+        for suffix, changed in (("cc_init_data", "invalid-rehearsal-initdata"), ("machine_type", "Standard_DC8as_v5")):
+            key = "io.katacontainers.config.hypervisor." + suffix
+            value = expected[role][key]
+            if current["metadata"].get("annotations", {}).get(key) != value:
+                raise RuntimeError("Pod differs from the approved guest configuration")
+            reject("pod", current, "/metadata/annotations/" + key.replace("/", "~1"), value, changed,
+                   "The confidential Pod must retain its approved guest configuration", role + " " + suffix)
+        if role == "workload":
+            owner, = current["metadata"]["ownerReferences"]
+            if owner["kind"] != "Sandbox":
+                raise RuntimeError("Workload has an unexpected owner")
+            sandbox = d.get("sandbox", owner["name"], "saw-confidential")
+            if sandbox["metadata"]["uid"] != owner["uid"]:
+                raise RuntimeError("Workload Sandbox identity changed")
+            reject("sandbox", sandbox, "/spec/podTemplate/spec/runtimeClassName", "kata-cc", "kata-remote",
+                   "The Sandbox workload template must use the approved Kata RuntimeClass", "workload RuntimeClass")
+    return records
+
+
 def links(d):
     console = "https://console-openshift-console.apps." + d.DOMAIN
     records = {}
@@ -186,6 +228,7 @@ def verify(d):
             raise RuntimeError("Expected exactly three confidential peer VMs")
         return evidence
     check("Confidential peer VM correlation", peers)
+    check("Admission pins placement and guest configuration", lambda: admission(d))
 
     for owner in ("baseline", "confidential"):
         check(owner + " credential locations", lambda owner=owner: credential_locations(d, owner))
@@ -215,8 +258,8 @@ def verify(d):
             if e["workloadUID"] != pod(d, owner, "workload")["metadata"]["uid"] or not all(
                     e.get(key) is True for key in ("freshChat", "placeholderVerified", "withinRecordingWindow")):
                 raise RuntimeError("Owner rehearsal is stale or incomplete")
-        if not all(evidence["confidential"].get(key) is True for key in ("recreated", "chatAfterRecreation", "placementRejection", "initdataRejection")):
-            raise RuntimeError("Confidential recreation/admission rehearsal incomplete")
+        if not all(evidence["confidential"].get(key) is True for key in ("recreated", "chatAfterRecreation")):
+            raise RuntimeError("Confidential recreation rehearsal incomplete")
         return evidence
     check("Owner and recreation rehearsal", rehearsal)
     d.save("verification.json", result)

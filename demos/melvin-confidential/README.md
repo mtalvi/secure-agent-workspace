@@ -177,8 +177,8 @@ ownerReferences and expected annotations, and change only the placement or
 initdata being tested. First prove the unchanged dry-run succeeds. Require the
 specific ValidatingAdmissionPolicy rejection; another error is inconclusive.
 
-For the recreation rehearsal, restart the confidential workspace using its
-documented `restartGeneration` lifecycle input, keeping the pinned plan,
+For the recreation rehearsal, increment both `intentGeneration` and
+`restartGeneration` on the confidential owner's saved values, keeping the pinned plan,
 registration, placement and policy unchanged. Reapply the owner release through
 `scripts/container-workspace.py`. Wait for both new pod UIDs to be Ready, repeat
 Azure and exec checks, then send a fresh owner chat. Do not patch an enrolled

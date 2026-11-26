@@ -140,6 +140,38 @@ def test_generated_demo_uses_posix_shares_and_block_databases(demo, monkeypatch)
     assert stack["audit"]["values"]["historyStorageClass"] == "managed-csi"
 
 
+@pytest.mark.parametrize("policy_denial", [False, True])
+def test_admission_evidence_requires_specific_policy_denial_and_only_dry_runs(demo, monkeypatch, policy_denial):
+    prefix = "io.katacontainers.config.hypervisor."
+    expected = {role: {prefix + "cc_init_data": "approved-policy", prefix + "machine_type": size}
+        for role, size in (("workload", "Standard_DC4as_v5"), ("supervisor", "Standard_DC2as_v5"))}
+    pods = {role: {"metadata": {"name": role, "uid": role + "-uid", "annotations": annotations,
+            "ownerReferences": [{"kind": "Sandbox", "name": "sandbox", "uid": "sandbox-uid"}]}}
+        for role, annotations in expected.items()}
+    monkeypatch.setattr(demo.verify, "pod", lambda d, owner, role: pods[role])
+    monkeypatch.setattr(demo, "load", lambda name: expected)
+    monkeypatch.setattr(demo, "get", lambda *args: {"metadata": {"name": "sandbox", "uid": "sandbox-uid"}})
+    calls = []
+    def oc(*args, **kwargs):
+        calls.append(args)
+        assert "--dry-run=server" in args and args[args.index("-n") + 1] == "saw-confidential"
+        patch = json.loads(args[args.index("-p") + 1])
+        negative = patch[-1]["value"] in {"invalid-rehearsal-initdata", "Standard_DC8as_v5", "kata-remote"}
+        reason = ("The Sandbox workload template must use the approved Kata RuntimeClass" if args[1] == "sandbox"
+                  else "The confidential Pod must retain its approved guest configuration")
+        message = "ValidatingAdmissionPolicy denied request: " + reason if policy_denial else "RBAC cannot patch this resource"
+        return SimpleNamespace(returncode=int(negative), stdout="", stderr=message if negative else "")
+    monkeypatch.setattr(demo, "oc", oc)
+    if policy_denial:
+        evidence = demo.verify.admission(demo)
+        assert len(evidence) == 5 and len(calls) == 10
+        assert all(e["unchangedAccepted"] and e["rejected"] for e in evidence)
+    else:
+        with pytest.raises(RuntimeError, match="specific forbidden change"):
+            demo.verify.admission(demo)
+        assert len(calls) == 2
+
+
 def test_created_account_retry_uses_saved_subject_when_realm_strips_attributes(demo, monkeypatch):
     import uuid
     saved = {owner: {"registration": str(i) * 16, "subject": str(uuid.UUID(int=i))}
