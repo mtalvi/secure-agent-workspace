@@ -61,7 +61,11 @@ def accounts(d):
     role = request("GET", "/roles/openshell-user")
     for owner in OWNERS:
         found = request("GET", "/users?exact=true&username=" + owner)
-        if found and found[0].get("attributes", {}).get("sawDemo") != [d.DEMO]:
+        # This realm strips unmanaged user-profile attributes. The immutable
+        # subject recorded immediately after our create is the ownership proof;
+        # never adopt an existing username without that exact saved subject.
+        if found and (len(found) != 1 or found[0]["id"] != saved.get(owner, {}).get("subject")
+                      or found[0]["username"] != owner):
             raise RuntimeError("Existing Keycloak account is not demo-owned: " + owner)
         if owner not in saved:
             saved[owner] = {"password": "Aa9!" + secrets.token_urlsafe(24), "registration": secrets.token_hex(8)}
@@ -69,7 +73,7 @@ def accounts(d):
         if not found:
             request("POST", "/users", {"username": owner, "enabled": True, "emailVerified": True,
                     "email": owner + "@openshell.local", "firstName": owner.title(), "lastName": "Demo",
-                    "attributes": {"sawDemo": [d.DEMO]}, "requiredActions": [],
+                    "requiredActions": [],
                     "credentials": [{"type": "password", "temporary": False, "value": saved[owner]["password"]}]})
             found = request("GET", "/users?exact=true&username=" + owner)
         subject = found[0]["id"]

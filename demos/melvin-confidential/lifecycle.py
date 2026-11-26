@@ -98,7 +98,7 @@ def cleanup(d):
         token = json.loads(base64.b64decode(root))["root_token"]
         for owner, account in owners.items():
             current = request("GET", "/users/" + account["subject"])
-            if current.get("attributes", {}).get("sawDemo") != [d.DEMO]:
+            if current.get("id") != account["subject"] or current.get("username") != owner:
                 raise RuntimeError("Demo account ownership changed")
             request("PUT", "/users/" + account["subject"], {"enabled": False})
             for name in ("inference", "web-search"):

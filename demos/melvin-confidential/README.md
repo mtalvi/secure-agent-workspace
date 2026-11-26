@@ -73,6 +73,9 @@ captures and checks the observed boundary, pins its reference and BOM digest,
 then enables enrollment. It never uses `autoApprove`. A foundation failure
 leaves enrollment disabled. The generated per-owner values are saved privately
 under `.state`; use those exact registrations for retries and cleanup.
+Keycloak ownership uses the immutable subject saved when the helper creates
+each account. This realm discards unmanaged user attributes. An existing
+username without the matching saved subject is never adopted.
 
 Both owners use the same application, supervisor, sandbox-runtime and gateway
 images. Only the confidential owner uses `mode: kata`, the explicitly approved
