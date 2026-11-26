@@ -94,3 +94,28 @@ def test_initdata_includes_guest_service_activation_without_trustee(demo):
     assert cdh["credentials"] == [] and cdh["kbc"]["url"] == "" and cdh["image"] == {}
     assert "default ExecProcessRequest := false" in contents["policy.rego"]
     assert "default SetPolicyRequest := false" in contents["policy.rego"]
+
+
+def test_existing_keycloak_username_without_saved_subject_is_not_adopted(demo, monkeypatch):
+    def request(method, path, data=None):
+        assert method == "GET"
+        return {"name": "openshell-user"} if path.startswith("/roles/") else [{"id": "unrelated", "username": "baseline"}]
+    monkeypatch.setattr(demo.users, "keycloak", lambda d: request)
+    with pytest.raises(RuntimeError, match="not demo-owned"):
+        demo.users.accounts(demo)
+
+
+def test_created_account_retry_uses_saved_subject_when_realm_strips_attributes(demo, monkeypatch):
+    import uuid
+    saved = {owner: {"registration": str(i) * 16, "subject": str(uuid.UUID(int=i))}
+             for i, owner in enumerate(demo.users.OWNERS, 1)}
+    demo.save("accounts.json", saved)
+    def request(method, path, data=None):
+        if path == "/roles/openshell-user":
+            return {"name": "openshell-user"}
+        if method == "GET":
+            owner = path.split("username=")[1]
+            return [{"id": saved[owner]["subject"], "username": owner}]
+        assert method == "POST" and path.endswith("/role-mappings/realm")
+    monkeypatch.setattr(demo.users, "keycloak", lambda d: request)
+    assert set(demo.users.accounts(demo)) == set(demo.users.OWNERS)
