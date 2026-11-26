@@ -132,7 +132,8 @@ def values(d, owner, account, pins, revision):
             "storage": {"className": "azurefile-csi", "gatewayClassName": "managed-csi",
                         "gatewayClaimName": owner + "-gateway-sqlite"}}}},
         "policy": {"revision": revision, "values": {"network": {"publicHTTPS": True}}},
-        "audit": {"revision": revision, "values": {"storageClass": "azurefile-csi", "exchangeStorageClass": "azurefile-csi"}}}
+        "audit": {"revision": revision, "values": {"storageClass": "azurefile-csi", "exchangeStorageClass": "azurefile-csi",
+            "historyStorageClass": "managed-csi", "historyClaimName": owner + "-history-sqlite"}}}
     site = {"subject": account["subject"]}
     if owner == "confidential":
         rc = d.get("runtimeclass", "kata-cc")

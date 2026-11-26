@@ -8,6 +8,10 @@ trustedNamespace: ""
 runtimeNamespace: ""
 image: ""
 storageClass: ""
+# SQLite history needs filesystem locking; it can use a block-backed claim
+# independently of shared workspace and exchange storage.
+historyStorageClass: ""
+historyClaimName: ""
 ownerID: ""
 identity: {}
 exchangeStorageClass: ""

@@ -11,6 +11,7 @@
 {{- $id := .Values.identity }}
 {{- range $f := list "subject" "username" "workspace" "sandbox" }}{{- $_ := required $f (get $id $f) }}{{- end }}
 {{- $base := .Release.Name }}
+{{- $historyClaim := .Values.historyClaimName | default (printf "%s-history" $base) }}
 {{- /* Without receipts the sandbox keeps a best-effort local audit log on its
        own ReadWriteOnce volume: no history, exchange, forwarder or writer. */}}
 {{- $claims := dict "audit" $rn "gate" $rn "workspace" $rn }}
@@ -21,7 +22,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   namespace: {{ $ns }}
-  name: {{ if or (eq $name "exchange") (eq $name "audit") }}saw-audit-{{ $base }}{{ else if eq $name "gate" }}saw-gate-{{ $base }}{{ else if eq $name "workspace" }}workspace-{{ $base }}{{ else }}{{ $base }}-{{ $name }}{{ end }}
+  name: {{ if or (eq $name "exchange") (eq $name "audit") }}saw-audit-{{ $base }}{{ else if eq $name "gate" }}saw-gate-{{ $base }}{{ else if eq $name "workspace" }}workspace-{{ $base }}{{ else }}{{ $historyClaim }}{{ end }}
   annotations: {argocd.argoproj.io/sync-options: 'Prune=false,Delete=false'}
   {{- if ne $name "history" }}
   labels:
@@ -32,6 +33,8 @@ metadata:
 spec:
   {{- if or (eq $name "exchange") (and (eq $name "gate") $.Values.shareGateForModelSelection) }}
   storageClassName: {{ required "exchangeStorageClass required" $.Values.exchangeStorageClass }}
+  {{- else if and (eq $name "history") $.Values.historyStorageClass }}
+  storageClassName: {{ $.Values.historyStorageClass }}
   {{- else if $.Values.storageClass }}
   storageClassName: {{ $.Values.storageClass }}
   {{- end }}
@@ -133,7 +136,7 @@ spec:
       volumes:
       - {name: code, configMap: {name: {{ $base }}-{{ $role }}}}
       {{- if eq $role "writer" }}
-      - {name: data, persistentVolumeClaim: {claimName: {{ $base }}-history}}
+      - {name: data, persistentVolumeClaim: {claimName: {{ $historyClaim }}}}
       - {name: trust, secret: {secretName: {{ $base }}-tls}}
       {{- else }}
       - {name: data, persistentVolumeClaim: {claimName: saw-audit-{{ $base }}}}

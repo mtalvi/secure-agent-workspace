@@ -82,8 +82,8 @@ under `.state`; use those exact registrations for retries and cleanup.
 Keycloak ownership uses the immutable subject saved when the helper creates
 each account. This realm discards unmanaged user attributes. An existing
 username without the matching saved subject is never adopted.
-Gateway SQLite uses a separate `managed-csi` block claim; workspace and audit
-files use `azurefile-csi`. The existing ingress certificate is explicitly
+Gateway and audit-writer SQLite databases use separate `managed-csi` block
+claims; workspace and audit exchange files use `azurefile-csi`. The existing ingress certificate is explicitly
 trusted for gateway OIDC discovery through a public CA ConfigMap. Inference
 continues to use its publicly trusted certificate.
 
