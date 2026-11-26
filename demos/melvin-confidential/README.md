@@ -82,8 +82,8 @@ under `.state`; use those exact registrations for retries and cleanup.
 Keycloak ownership uses the immutable subject saved when the helper creates
 each account. This realm discards unmanaged user attributes. An existing
 username without the matching saved subject is never adopted.
-Gateway and audit-writer SQLite databases and the controller ledger use
-`managed-csi` block claims. Workspace, gate and audit exchange files use the
+Gateway and audit-writer SQLite databases, the OpenClaw workspace and the
+controller ledger use `managed-csi` block claims. Gate and audit exchange files use the
 demo-owned `saw-demo-nfs` class. Its disposable probe verifies POSIX permissions,
 ownership, hard links, rename and locking before enrollment. Azure Files SMB
 does not support the gate publisher's filesystem requirements. Azure rounds

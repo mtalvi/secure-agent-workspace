@@ -134,7 +134,8 @@ def values(d, owner, account, pins, revision):
                         "gatewayClaimName": owner + "-gateway-sqlite"}}}},
         "policy": {"revision": revision, "values": {"network": {"publicHTTPS": True}}},
         "audit": {"revision": revision, "values": {"storageClass": storage.CLASS, "exchangeStorageClass": storage.CLASS,
-            "historyStorageClass": "managed-csi", "historyClaimName": owner + "-history-sqlite"}}}
+            "workspaceStorageClass": "managed-csi", "historyStorageClass": "managed-csi",
+            "historyClaimName": owner + "-history-sqlite"}}}
     site = {"subject": account["subject"]}
     if owner == "confidential":
         rc = d.get("runtimeclass", "kata-cc")

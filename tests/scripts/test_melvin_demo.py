@@ -138,6 +138,7 @@ def test_generated_demo_uses_posix_shares_and_block_databases(demo, monkeypatch)
     assert stack["gateway"]["values"]["kubernetes"]["storage"]["gatewayClassName"] == "managed-csi"
     assert stack["audit"]["values"]["exchangeStorageClass"] == "saw-demo-nfs"
     assert stack["audit"]["values"]["historyStorageClass"] == "managed-csi"
+    assert stack["audit"]["values"]["workspaceStorageClass"] == "managed-csi"
 
 
 @pytest.mark.parametrize("policy_denial", [False, True])

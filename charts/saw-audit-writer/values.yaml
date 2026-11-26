@@ -12,6 +12,9 @@ storageClass: ""
 # independently of shared workspace and exchange storage.
 historyStorageClass: ""
 historyClaimName: ""
+# OpenClaw also keeps SQLite state on its single-writer workspace volume.
+# Keep that on block storage when the shared gate/exchange uses NFS.
+workspaceStorageClass: ""
 ownerID: ""
 identity: {}
 exchangeStorageClass: ""

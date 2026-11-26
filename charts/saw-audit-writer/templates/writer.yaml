@@ -35,6 +35,8 @@ spec:
   storageClassName: {{ required "exchangeStorageClass required" $.Values.exchangeStorageClass }}
   {{- else if and (eq $name "history") $.Values.historyStorageClass }}
   storageClassName: {{ $.Values.historyStorageClass }}
+  {{- else if and (eq $name "workspace") $.Values.workspaceStorageClass }}
+  storageClassName: {{ $.Values.workspaceStorageClass }}
   {{- else if $.Values.storageClass }}
   storageClassName: {{ $.Values.storageClass }}
   {{- end }}
